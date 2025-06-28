@@ -343,7 +343,7 @@ export const db = {
         .from('user_stats')
         .select('*')
         .eq('user_id', userId)
-        .single()
+        .maybeSingle()
       console.log('Get stats result:', { data: !!data, error })
       return { data, error }
     } catch (error) {
