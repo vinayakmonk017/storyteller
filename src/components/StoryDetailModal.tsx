@@ -22,6 +22,7 @@ import {
   Loader2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { supabase } from '@/lib/supabase'
 
 interface StoryDetailModalProps {
   storyId: string
@@ -76,10 +77,21 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
     setError(null)
     
     try {
+      // Get the current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError) {
+        throw new Error(`Authentication error: ${sessionError.message}`)
+      }
+      
+      if (!session) {
+        throw new Error('No active session found. Please sign in again.')
+      }
+
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-story`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ storyId })
@@ -108,10 +120,21 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
     setDeleting(true)
     
     try {
+      // Get the current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError) {
+        throw new Error(`Authentication error: ${sessionError.message}`)
+      }
+      
+      if (!session) {
+        throw new Error('No active session found. Please sign in again.')
+      }
+
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-story`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ storyId })
