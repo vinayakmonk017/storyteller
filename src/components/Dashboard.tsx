@@ -25,9 +25,10 @@ interface DashboardProps {
       achievement_type: string
     }>
   }
+  onStoryDeleted?: () => void
 }
 
-export default function Dashboard({ userStats }: DashboardProps) {
+export default function Dashboard({ userStats, onStoryDeleted }: DashboardProps) {
   const { stories, refreshStories } = useStories()
   const [progressData, setProgressData] = useState<Array<{ day: string; stories: number; minutes: number }>>([])
   const [genreData, setGenreData] = useState<Array<{ genre: string; count: number; color: string }>>([])
@@ -246,10 +247,16 @@ export default function Dashboard({ userStats }: DashboardProps) {
   }
 
   const handleStoryDelete = async (storyId: string) => {
+    console.log('Story deleted from modal, refreshing dashboard...')
     // Refresh stories after deletion
     await refreshStories()
     setShowStoryModal(false)
     setSelectedStoryId(null)
+    
+    // Call the parent callback to refresh stats
+    if (onStoryDeleted) {
+      onStoryDeleted()
+    }
   }
 
   const formatDuration = (totalMinutes: number) => {

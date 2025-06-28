@@ -26,7 +26,7 @@ export default function App() {
 
   const { user, profile, loading: authLoading, signOut } = useAuth()
   const { stories, createStory, getStoryById, loading: storiesLoading, refreshStories } = useStories()
-  const { stats, achievements, loading: statsLoading } = useUserStats()
+  const { stats, achievements, loading: statsLoading, refreshStats } = useUserStats()
 
   // Show auth modal if user is not logged in and Supabase is configured
   useEffect(() => {
@@ -46,6 +46,9 @@ export default function App() {
         setCurrentView('feedback')
         setIsProcessing(false)
         setProcessingStoryId(null)
+        
+        // Refresh stats after story completion
+        refreshStats()
       } else if (processingStory?.processing_status === 'failed') {
         console.log('Story processing failed')
         alert('Story processing failed. Please try again.')
@@ -53,7 +56,7 @@ export default function App() {
         setProcessingStoryId(null)
       }
     }
-  }, [stories, processingStoryId])
+  }, [stories, processingStoryId, refreshStats])
 
   const handleStoryComplete = async (storyData: any) => {
     if (!user) {
@@ -100,9 +103,8 @@ export default function App() {
     } catch (error) {
       console.error('Error processing story:', error)
       alert('There was an error processing your story. Please try again.')
-      setProcessingStoryId(null)
-    } finally{
       setIsProcessing(false)
+      setProcessingStoryId(null)
     }
   }
 
@@ -154,6 +156,17 @@ export default function App() {
     await signOut()
     setShowAuthModal(true)
     setCurrentView('dashboard')
+  }
+
+  // Handle story deletion from dashboard
+  const handleStoryDeleted = async () => {
+    console.log('Story deleted, refreshing data...')
+    // Refresh both stories and stats after deletion
+    await Promise.all([
+      refreshStories(),
+      refreshStats()
+    ])
+    console.log('Data refreshed after story deletion')
   }
 
   // Show loading screen while auth is loading
@@ -332,29 +345,35 @@ export default function App() {
                 </p>
               </div>
               {stats ? (
-                <Dashboard userStats={{
-                  totalStories: stats.total_stories,
-                  currentStreak: stats.current_streak,
-                  longestStreak: stats.longest_streak,
-                  totalMinutes: stats.total_minutes,
-                  favoriteGenre: stats.favorite_genre || 'Adventure',
-                  achievements: achievements.map(a => ({
-                    id: a.achievement_id,
-                    title: a.achievement?.title || '',
-                    description: a.achievement?.description || '',
-                    earned_at: a.earned_at,
-                    achievement_type: a.achievement?.achievement_type || ''
-                  }))
-                }} />
+                <Dashboard 
+                  userStats={{
+                    totalStories: stats.total_stories,
+                    currentStreak: stats.current_streak,
+                    longestStreak: stats.longest_streak,
+                    totalMinutes: stats.total_minutes,
+                    favoriteGenre: stats.favorite_genre || 'Adventure',
+                    achievements: achievements.map(a => ({
+                      id: a.achievement_id,
+                      title: a.achievement?.title || '',
+                      description: a.achievement?.description || '',
+                      earned_at: a.earned_at,
+                      achievement_type: a.achievement?.achievement_type || ''
+                    }))
+                  }}
+                  onStoryDeleted={handleStoryDeleted}
+                />
               ) : (
-                <Dashboard userStats={{
-                  totalStories: 0,
-                  currentStreak: 0,
-                  longestStreak: 0,
-                  totalMinutes: 0,
-                  favoriteGenre: 'Adventure',
-                  achievements: []
-                }} />
+                <Dashboard 
+                  userStats={{
+                    totalStories: 0,
+                    currentStreak: 0,
+                    longestStreak: 0,
+                    totalMinutes: 0,
+                    favoriteGenre: 'Adventure',
+                    achievements: []
+                  }}
+                  onStoryDeleted={handleStoryDeleted}
+                />
               )}
             </motion.div>
           )}
