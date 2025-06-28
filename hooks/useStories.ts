@@ -1,25 +1,35 @@
 import { useState, useEffect } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { db, storage, Story, StoryFeedback, supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 
 export function useStories() {
   const { user } = useAuth()
-  const [stories, setStories] = useState<(Story & { story_feedback?: StoryFeedback[] })[]>([])
-  const [loading, setLoading] = useState(false)
+  const queryClient = useQueryClient()
+  const [processingStoryId, setProcessingStoryId] = useState<string | null>(null)
 
+  // Query for fetching stories
+  const {
+    data: stories = [],
+    isLoading: loading,
+    refetch: refreshStories
+  } = useQuery({
+    queryKey: ['stories', user?.id],
+    queryFn: async () => {
+      if (!user) return []
+      const { data, error } = await db.getUserStories(user.id)
+      if (error) throw error
+      return data || []
+    },
+    enabled: !!user,
+  })
+
+  // Set up real-time subscription
   useEffect(() => {
-    if (user) {
-      loadStories()
-      setupRealtimeSubscription()
-    }
-  }, [user])
-
-  const setupRealtimeSubscription = () => {
     if (!user) return
 
     console.log('Setting up real-time subscription for stories...')
     
-    // Subscribe to changes in the stories table for this user
     const subscription = supabase
       .channel('stories-changes')
       .on(
@@ -35,29 +45,29 @@ export function useStories() {
           
           const updatedStory = payload.new as Story
           
-          // Update the story in our local state
-          setStories(prevStories => 
-            prevStories.map(story => 
+          // Update the query cache
+          queryClient.setQueryData(['stories', user.id], (oldStories: any[]) => {
+            if (!oldStories) return []
+            return oldStories.map(story => 
               story.id === updatedStory.id 
                 ? { ...story, ...updatedStory }
                 : story
             )
-          )
+          })
           
-          // If story is completed, also fetch its feedback
-          if (updatedStory.processing_status === 'completed') {
+          // If story is completed and we're tracking it, fetch its feedback
+          if (updatedStory.processing_status === 'completed' && processingStoryId === updatedStory.id) {
             loadStoryFeedback(updatedStory.id)
           }
         }
       )
       .subscribe()
 
-    // Cleanup subscription on unmount
     return () => {
       console.log('Cleaning up real-time subscription')
       subscription.unsubscribe()
     }
-  }
+  }, [user, queryClient, processingStoryId])
 
   const loadStoryFeedback = async (storyId: string) => {
     try {
@@ -68,53 +78,35 @@ export function useStories() {
 
       if (error) throw error
 
-      // Update the story with its feedback
-      setStories(prevStories =>
-        prevStories.map(story =>
+      // Update the story with its feedback in the cache
+      queryClient.setQueryData(['stories', user?.id], (oldStories: any[]) => {
+        if (!oldStories) return []
+        return oldStories.map(story =>
           story.id === storyId
             ? { ...story, story_feedback: feedback }
             : story
         )
-      )
+      })
     } catch (error) {
       console.error('Error loading story feedback:', error)
     }
   }
 
-  const loadStories = async () => {
-    if (!user) return []
-    
-    setLoading(true)
-    try {
-      const { data, error } = await db.getUserStories(user.id)
-      if (error) throw error
-      setStories(data || [])
-      return data || []
-    } catch (error) {
-      console.error('Error loading stories:', error)
-      return []
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Mutation for creating stories
+  const createStoryMutation = useMutation({
+    mutationFn: async (storyData: {
+      title: string
+      genre: string
+      prompt: string
+      duration_seconds: number
+      feedback_personality: string
+      audioBlob: Blob
+    }) => {
+      if (!user) throw new Error('User not authenticated')
 
-  const createStory = async (storyData: {
-    title: string
-    genre: string
-    prompt: string
-    duration_seconds: number
-    feedback_personality: string
-    audioBlob: Blob
-  }) => {
-    if (!user) throw new Error('User not authenticated')
-
-    try {
-      // Upload audio file with better error handling
+      // Upload audio file
       const fileName = `${user.id}/${Date.now()}.webm`
-      
-      // Convert blob to file for better upload handling
-      const audioFile = new File([storyData.audioBlob], fileName, 
-                                 { 
+      const audioFile = new File([storyData.audioBlob], fileName, { 
         type: storyData.audioBlob.type || 'audio/webm' 
       })
       
@@ -124,12 +116,10 @@ export function useStories() {
       )
 
       if (uploadError) {
-        console.error('Upload error:', uploadError)
         throw new Error(`Failed to upload audio: ${uploadError.message}`)
       }
 
       const audioUrl = storage.getAudioUrl(fileName)
-      console.log('Audio uploaded successfully:', audioUrl)
 
       // Create story record
       const { data: story, error: storyError } = await db.createStory({
@@ -144,14 +134,8 @@ export function useStories() {
       })
 
       if (storyError) {
-        console.error('Story creation error:', storyError)
         throw new Error(`Failed to create story: ${storyError.message}`)
       }
-
-      console.log('Story created successfully:', story.id)
-
-      // Add the new story to our local state immediately
-      setStories(prev => [story, ...prev])
 
       // Trigger processing via edge function
       try {
@@ -169,24 +153,30 @@ export function useStories() {
         })
 
         if (!response.ok) {
-          const errorText = await response.text()
-          console.error('Edge function error:', errorText)
-          throw new Error(`Failed to process story: ${response.status} ${errorText}`)
+          console.error('Edge function error:', await response.text())
         }
-
-        console.log('Story processing initiated successfully')
       } catch (processingError) {
         console.error('Processing initiation error:', processingError)
-        // Don't throw here - the story was created successfully, processing just failed to start
-        // The user can try again or we can implement retry logic
       }
 
       return story
-    } catch (error) {
+    },
+    onSuccess: (newStory) => {
+      // Add the new story to the cache
+      queryClient.setQueryData(['stories', user?.id], (oldStories: any[]) => {
+        return [newStory, ...(oldStories || [])]
+      })
+      
+      // Set processing story ID for tracking
+      setProcessingStoryId(newStory.id)
+      
+      // Invalidate related queries
+      queryClient.invalidateQueries({ queryKey: ['user-stats', user?.id] })
+    },
+    onError: (error) => {
       console.error('Error creating story:', error)
-      throw error
     }
-  }
+  })
 
   const getStoryById = async (storyId: string) => {
     try {
@@ -207,16 +197,14 @@ export function useStories() {
     }
   }
 
-  const refreshStories = async () => {
-    const updatedStories = await loadStories()
-    return updatedStories
-  }
-
   return {
     stories,
     loading,
-    createStory,
+    createStory: createStoryMutation.mutate,
+    isCreatingStory: createStoryMutation.isPending,
     getStoryById,
-    refreshStories
+    refreshStories,
+    processingStoryId,
+    setProcessingStoryId
   }
 }

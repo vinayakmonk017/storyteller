@@ -7,6 +7,7 @@ import { Progress } from '@/src/components/ui/progress'
 import { Calendar, Trophy, Target, TrendingUp, Book, Clock, Award, Flame, Eye } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import { useStories } from '@/hooks/useStories'
+import { useQueryClient, useMutation } from '@tanstack/react-query'
 import { db } from '@/lib/supabase'
 import StoryDetailModal from './StoryDetailModal'
 
@@ -25,11 +26,11 @@ interface DashboardProps {
       achievement_type: string
     }>
   }
-  onStoryDeleted?: () => void
 }
 
-export default function Dashboard({ userStats, onStoryDeleted }: DashboardProps) {
-  const { stories, refreshStories } = useStories()
+export default function Dashboard({ userStats }: DashboardProps) {
+  const { stories } = useStories()
+  const queryClient = useQueryClient()
   const [progressData, setProgressData] = useState<Array<{ day: string; stories: number; minutes: number }>>([])
   const [genreData, setGenreData] = useState<Array<{ genre: string; count: number; color: string }>>([])
   const [recentStories, setRecentStories] = useState<Array<{
@@ -246,17 +247,26 @@ export default function Dashboard({ userStats, onStoryDeleted }: DashboardProps)
     setShowStoryModal(true)
   }
 
-  const handleStoryDelete = async (storyId: string) => {
-    console.log('Story deleted from modal, refreshing dashboard...')
-    // Refresh stories after deletion
-    await refreshStories()
-    setShowStoryModal(false)
-    setSelectedStoryId(null)
-    
-    // Call the parent callback to refresh stats
-    if (onStoryDeleted) {
-      onStoryDeleted()
+  // Mutation for handling story deletion with proper cache invalidation
+  const deleteStoryMutation = useMutation({
+    mutationFn: async (storyId: string) => {
+      // This will be handled by the StoryDetailModal
+      return storyId
+    },
+    onSuccess: () => {
+      // Invalidate and refetch all related queries
+      queryClient.invalidateQueries({ queryKey: ['stories'] })
+      queryClient.invalidateQueries({ queryKey: ['user-stats'] })
+      queryClient.invalidateQueries({ queryKey: ['user-achievements'] })
+      
+      // Close modal
+      setShowStoryModal(false)
+      setSelectedStoryId(null)
     }
+  })
+
+  const handleStoryDelete = (storyId: string) => {
+    deleteStoryMutation.mutate(storyId)
   }
 
   const formatDuration = (totalMinutes: number) => {

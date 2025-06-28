@@ -1,73 +1,75 @@
-import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { db, UserStats, UserAchievement } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 
 export function useUserStats() {
   const { user } = useAuth()
-  const [stats, setStats] = useState<UserStats | null>(null)
-  const [achievements, setAchievements] = useState<UserAchievement[]>([])
-  const [loading, setLoading] = useState(false)
+  const queryClient = useQueryClient()
 
-  useEffect(() => {
-    if (user) {
-      loadUserStats()
-      loadUserAchievements()
-    }
-  }, [user])
-
-  const loadUserStats = async () => {
-    if (!user) return
-    
-    setLoading(true)
-    try {
+  const {
+    data: stats,
+    isLoading: statsLoading,
+    refetch: refetchStats
+  } = useQuery({
+    queryKey: ['user-stats', user?.id],
+    queryFn: async () => {
+      if (!user) return null
+      
       const { data, error } = await db.getUserStats(user.id)
       if (error && error.code !== 'PGRST116') {
         throw error
       }
       
-      // If no stats exist, create default stats
+      // If no stats exist, return default stats
       if (!data) {
-        const defaultStats: Partial<UserStats> = {
+        return {
           user_id: user.id,
           total_stories: 0,
           total_minutes: 0,
           current_streak: 0,
-          longest_streak: 0
-        }
-        
-        // This will be created automatically when first story is added
-        setStats(defaultStats as UserStats)
-      } else {
-        setStats(data)
+          longest_streak: 0,
+          favorite_genre: null,
+          last_story_date: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        } as UserStats
       }
-    } catch (error) {
-      console.error('Error loading user stats:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+      
+      return data
+    },
+    enabled: !!user,
+  })
 
-  const loadUserAchievements = async () => {
-    if (!user) return
-    
-    try {
+  const {
+    data: achievements = [],
+    isLoading: achievementsLoading,
+    refetch: refetchAchievements
+  } = useQuery({
+    queryKey: ['user-achievements', user?.id],
+    queryFn: async () => {
+      if (!user) return []
+      
       const { data, error } = await db.getUserAchievements(user.id)
       if (error) throw error
-      setAchievements(data || [])
-    } catch (error) {
-      console.error('Error loading user achievements:', error)
-    }
-  }
+      return data || []
+    },
+    enabled: !!user,
+  })
 
   const refreshStats = async () => {
-    await loadUserStats()
-    await loadUserAchievements()
+    await Promise.all([
+      refetchStats(),
+      refetchAchievements()
+    ])
+    
+    // Also invalidate stories cache as stats might affect story display
+    queryClient.invalidateQueries({ queryKey: ['stories', user?.id] })
   }
 
   return {
     stats,
     achievements,
-    loading,
+    loading: statsLoading || achievementsLoading,
     refreshStats
   }
 }

@@ -20,12 +20,18 @@ type AppState = 'dashboard' | 'record' | 'feedback'
 export default function App() {
   const [currentView, setCurrentView] = useState<AppState>('dashboard')
   const [currentStory, setCurrentStory] = useState<any>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [processingStoryId, setProcessingStoryId] = useState<string | null>(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
 
   const { user, profile, loading: authLoading, signOut } = useAuth()
-  const { stories, createStory, getStoryById, loading: storiesLoading, refreshStories } = useStories()
+  const { 
+    stories, 
+    createStory, 
+    isCreatingStory,
+    getStoryById, 
+    loading: storiesLoading, 
+    processingStoryId,
+    setProcessingStoryId
+  } = useStories()
   const { stats, achievements, loading: statsLoading, refreshStats } = useUserStats()
 
   // Show auth modal if user is not logged in and Supabase is configured
@@ -44,7 +50,6 @@ export default function App() {
         console.log('Story processing completed via real-time update!')
         setCurrentStory(processingStory)
         setCurrentView('feedback')
-        setIsProcessing(false)
         setProcessingStoryId(null)
         
         // Refresh stats after story completion
@@ -52,11 +57,10 @@ export default function App() {
       } else if (processingStory?.processing_status === 'failed') {
         console.log('Story processing failed')
         alert('Story processing failed. Please try again.')
-        setIsProcessing(false)
         setProcessingStoryId(null)
       }
     }
-  }, [stories, processingStoryId, refreshStats])
+  }, [stories, processingStoryId, setProcessingStoryId, refreshStats])
 
   const handleStoryComplete = async (storyData: any) => {
     if (!user) {
@@ -82,10 +86,8 @@ export default function App() {
       return
     }
     
-    setIsProcessing(true)
-    
     try {
-      const story = await createStory({
+      createStory({
         title: generateStoryTitle(storyData.genre),
         genre: storyData.genre,
         prompt: storyData.prompt,
@@ -94,16 +96,12 @@ export default function App() {
         audioBlob: storyData.audioBlob
       })
 
-      // Set the processing story ID to watch for completion
-      setProcessingStoryId(story.id)
-      
       // The real-time subscription will handle the completion automatically
       console.log('Story created, waiting for real-time completion update...')
       
     } catch (error) {
       console.error('Error processing story:', error)
       alert('There was an error processing your story. Please try again.')
-      setIsProcessing(false)
       setProcessingStoryId(null)
     }
   }
@@ -156,17 +154,6 @@ export default function App() {
     await signOut()
     setShowAuthModal(true)
     setCurrentView('dashboard')
-  }
-
-  // Handle story deletion from dashboard
-  const handleStoryDeleted = async () => {
-    console.log('Story deleted, refreshing data...')
-    // Refresh both stories and stats after deletion
-    await Promise.all([
-      refreshStories(),
-      refreshStats()
-    ])
-    console.log('Data refreshed after story deletion')
   }
 
   // Show loading screen while auth is loading
@@ -299,7 +286,7 @@ export default function App() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <AnimatePresence mode="wait">
-          {isProcessing && (
+          {(isCreatingStory || processingStoryId) && (
             <motion.div
               key="processing"
               initial={{ opacity: 0 }}
@@ -328,7 +315,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {!isProcessing && currentView === 'dashboard' && (
+          {!isCreatingStory && !processingStoryId && currentView === 'dashboard' && (
             <motion.div
               key="dashboard"
               initial={{ opacity: 0, x: -20 }}
@@ -360,7 +347,6 @@ export default function App() {
                       achievement_type: a.achievement?.achievement_type || ''
                     }))
                   }}
-                  onStoryDeleted={handleStoryDeleted}
                 />
               ) : (
                 <Dashboard 
@@ -372,13 +358,12 @@ export default function App() {
                     favoriteGenre: 'Adventure',
                     achievements: []
                   }}
-                  onStoryDeleted={handleStoryDeleted}
                 />
               )}
             </motion.div>
           )}
 
-          {!isProcessing && currentView === 'record' && (
+          {!isCreatingStory && !processingStoryId && currentView === 'record' && (
             <motion.div
               key="record"
               initial={{ opacity: 0, x: 20 }}
@@ -395,7 +380,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {!isProcessing && currentView === 'feedback' && currentStory && (
+          {!isCreatingStory && !processingStoryId && currentView === 'feedback' && currentStory && (
             <motion.div
               key="feedback"
               initial={{ opacity: 0, y: 20 }}
