@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/src/components/ui/card'
 import { Badge } from '@/src/components/ui/badge'
 import { Progress } from '@/src/components/ui/progress'
-import { Calendar, Trophy, Target, TrendingUp, Book, Clock, Award, Flame } from 'lucide-react'
+import { Calendar, Trophy, Target, TrendingUp, Book, Clock, Award, Flame, Eye } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import { useStories } from '@/hooks/useStories'
 import { db } from '@/lib/supabase'
+import StoryDetailModal from './StoryDetailModal'
 
 interface DashboardProps {
   userStats: {
@@ -27,15 +28,17 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ userStats }: DashboardProps) {
-  const { stories } = useStories()
+  const { stories, refreshStories } = useStories()
   const [progressData, setProgressData] = useState<Array<{ day: string; stories: number; minutes: number }>>([])
   const [genreData, setGenreData] = useState<Array<{ genre: string; count: number; color: string }>>([])
   const [recentStories, setRecentStories] = useState<Array<{
+    id: string
     title: string
     genre: string
     duration: string
     date: string
     feedback: string
+    processing_status: string
   }>>([])
   const [achievements, setAchievements] = useState<Array<{
     id: string
@@ -45,6 +48,8 @@ export default function Dashboard({ userStats }: DashboardProps) {
     earned: boolean
     earned_at: string | null
   }>>([])
+  const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null)
+  const [showStoryModal, setShowStoryModal] = useState(false)
 
   // Generate weekly progress data from real stories
   useEffect(() => {
@@ -121,10 +126,9 @@ export default function Dashboard({ userStats }: DashboardProps) {
   }
 
   const generateRecentStories = () => {
-    // Get the 3 most recent completed stories
+    // Get the 5 most recent stories
     const recentCompleted = stories
-      .filter(story => story.processing_status === 'completed')
-      .slice(0, 3)
+      .slice(0, 5)
       .map(story => {
         const createdDate = new Date(story.created_at)
         const now = new Date()
@@ -141,17 +145,19 @@ export default function Dashboard({ userStats }: DashboardProps) {
         }
         
         // Get feedback summary
-        const feedback = story.story_feedback?.[0]?.feedback_text || 'Processing feedback...'
+        const feedback = story.story_feedback?.[0]?.feedback_text || ''
         const feedbackSummary = feedback.length > 80 
           ? feedback.substring(0, 80) + '...'
-          : feedback
+          : feedback || 'No feedback available'
         
         return {
+          id: story.id,
           title: story.title,
           genre: story.genre.charAt(0).toUpperCase() + story.genre.slice(1),
           duration: `${Math.ceil(story.duration_seconds / 60)} min`,
           date: timeAgo,
-          feedback: feedbackSummary
+          feedback: feedbackSummary,
+          processing_status: story.processing_status
         }
       })
     
@@ -234,6 +240,18 @@ export default function Dashboard({ userStats }: DashboardProps) {
     }
   }
 
+  const handleStoryClick = (storyId: string) => {
+    setSelectedStoryId(storyId)
+    setShowStoryModal(true)
+  }
+
+  const handleStoryDelete = async (storyId: string) => {
+    // Refresh stories after deletion
+    await refreshStories()
+    setShowStoryModal(false)
+    setSelectedStoryId(null)
+  }
+
   const formatDuration = (totalMinutes: number) => {
     const hours = Math.floor(totalMinutes / 60)
     const minutes = totalMinutes % 60
@@ -256,6 +274,16 @@ export default function Dashboard({ userStats }: DashboardProps) {
     if (lastWeekStories === 0) return '+100%'
     const growth = Math.round(((thisWeekStories - lastWeekStories) / lastWeekStories) * 100)
     return growth > 0 ? `+${growth}%` : `${growth}%`
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'bg-green-100 text-green-800'
+      case 'processing': return 'bg-blue-100 text-blue-800'
+      case 'pending': return 'bg-yellow-100 text-yellow-800'
+      case 'failed': return 'bg-red-100 text-red-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
   }
 
   return (
@@ -460,21 +488,33 @@ export default function Dashboard({ userStats }: DashboardProps) {
             <Calendar className="h-5 w-5" />
             Recent Stories
           </CardTitle>
-          <CardDescription>Your latest storytelling sessions</CardDescription>
+          <CardDescription>Your latest storytelling sessions - click to view details</CardDescription>
         </CardHeader>
         <CardContent>
           {recentStories.length > 0 ? (
             <div className="space-y-4">
-              {recentStories.map((story, index) => (
-                <div key={index} className="flex items-center justify-between p-4 rounded-lg border">
+              {recentStories.map((story) => (
+                <div 
+                  key={story.id} 
+                  className="flex items-center justify-between p-4 rounded-lg border hover:bg-gray-50 cursor-pointer transition-colors group"
+                  onClick={() => handleStoryClick(story.id)}
+                >
                   <div className="flex-1">
-                    <h4 className="font-medium">{story.title}</h4>
-                    <div className="flex items-center gap-4 mt-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h4 className="font-medium group-hover:text-blue-600 transition-colors">{story.title}</h4>
+                      <Badge className={getStatusColor(story.processing_status)}>
+                        {story.processing_status}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-4 mb-2">
                       <Badge variant="outline" className="text-xs">{story.genre}</Badge>
                       <span className="text-xs text-muted-foreground">{story.duration}</span>
                       <span className="text-xs text-muted-foreground">{story.date}</span>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-2">{story.feedback}</p>
+                    <p className="text-sm text-muted-foreground">{story.feedback}</p>
+                  </div>
+                  <div className="ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Eye className="w-5 h-5 text-gray-400" />
                   </div>
                 </div>
               ))}
@@ -482,12 +522,25 @@ export default function Dashboard({ userStats }: DashboardProps) {
           ) : (
             <div className="text-center py-8 text-muted-foreground">
               <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No completed stories yet</p>
+              <p>No stories yet</p>
               <p className="text-sm">Record your first story to see it here!</p>
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Story Detail Modal */}
+      {selectedStoryId && (
+        <StoryDetailModal
+          storyId={selectedStoryId}
+          isOpen={showStoryModal}
+          onClose={() => {
+            setShowStoryModal(false)
+            setSelectedStoryId(null)
+          }}
+          onDelete={handleStoryDelete}
+        />
+      )}
     </div>
   )
 }
