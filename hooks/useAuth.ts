@@ -13,11 +13,8 @@ export function useAuth() {
 
     const initializeAuth = async () => {
       try {
-        console.log('Initializing auth...')
-        
         // Get initial session
         const { user: initialUser, error } = await auth.getCurrentUser()
-        console.log('Initial auth check:', { user: initialUser?.id, error })
         
         if (!mounted) return
         
@@ -29,7 +26,6 @@ export function useAuth() {
           setProfile(null)
         }
       } catch (error) {
-        console.error('Error initializing auth:', error)
         if (mounted) {
           setUser(null)
           setProfile(null)
@@ -38,7 +34,6 @@ export function useAuth() {
         if (mounted) {
           setLoading(false)
           setInitialized(true)
-          console.log('Auth initialization complete')
         }
       }
     }
@@ -47,8 +42,6 @@ export function useAuth() {
 
     // Listen for auth changes
     const { data: { subscription } } = auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, session?.user?.id)
-      
       if (!mounted) return
       
       setUser(session?.user ?? null)
@@ -72,33 +65,26 @@ export function useAuth() {
 
   const loadUserProfile = async (userId: string) => {
     try {
-      console.log('Loading profile for user:', userId)
       const { data, error } = await db.getUserProfile(userId)
       
       if (error && error.code === 'PGRST116') {
         // Profile doesn't exist, create one
-        console.log('Creating new profile for user:', userId)
         const { data: newProfile, error: createError } = await db.createUserProfile({
           id: userId,
           preferred_feedback_style: 'encouraging'
         })
         
         if (createError) {
-          console.error('Error creating profile:', createError)
           setProfile(null)
         } else {
-          console.log('Profile created successfully:', newProfile)
           setProfile(newProfile)
         }
       } else if (error) {
-        console.error('Error loading profile:', error)
         setProfile(null)
       } else if (data) {
-        console.log('Profile loaded successfully:', data)
         setProfile(data)
       }
     } catch (error) {
-      console.error('Error in loadUserProfile:', error)
       setProfile(null)
     }
   }

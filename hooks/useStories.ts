@@ -29,8 +29,6 @@ export function useStories() {
   useEffect(() => {
     if (!user) return
 
-    console.log('Setting up real-time subscription for stories...')
-    
     const subscription = supabase
       .channel('stories-changes')
       .on(
@@ -42,8 +40,6 @@ export function useStories() {
           filter: `user_id=eq.${user.id}`
         },
         (payload) => {
-          console.log('Real-time story update received:', payload)
-          
           const updatedStory = payload.new as Story
           
           // Update the query cache immediately
@@ -58,7 +54,6 @@ export function useStories() {
           
           // Force a refetch to get the latest data including feedback
           if (updatedStory.processing_status === 'completed') {
-            console.log('Story completed - forcing data refresh')
             refreshStories()
           }
         }
@@ -71,8 +66,6 @@ export function useStories() {
           table: 'story_feedback',
         },
         (payload) => {
-          console.log('Real-time feedback insert received:', payload)
-          
           // Force refresh when feedback is added
           refreshStories()
         }
@@ -80,7 +73,6 @@ export function useStories() {
       .subscribe()
 
     return () => {
-      console.log('Cleaning up real-time subscription')
       subscription.unsubscribe()
     }
   }, [user, queryClient, refreshStories])
@@ -105,12 +97,6 @@ export function useStories() {
         type: storyData.audioBlob.type || 'audio/webm' 
       })
       
-      console.log('🎵 Uploading audio file:', {
-        fileName,
-        size: audioFile.size,
-        type: audioFile.type
-      })
-      
       const { data: uploadData, error: uploadError } = await storage.uploadAudio(
         audioFile,
         fileName
@@ -122,8 +108,6 @@ export function useStories() {
 
       // Get the public URL for the uploaded file with cache-busting
       const audioUrl = storage.getAudioUrl(fileName) + `?t=${timestamp}`
-      
-      console.log('🎵 Generated audio URL:', audioUrl)
       
       // Validate that the URL is accessible
       if (!audioUrl || audioUrl === 'placeholder-url') {
@@ -146,11 +130,6 @@ export function useStories() {
         throw new Error(`Failed to create story: ${storyError.message}`)
       }
 
-      console.log('🎵 Story created successfully:', {
-        storyId: story.id,
-        audioUrl: story.audio_url
-      })
-
       // Trigger processing via edge function
       try {
         const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-story`, {
@@ -168,18 +147,15 @@ export function useStories() {
 
         if (!response.ok) {
           const errorText = await response.text()
-          console.error('Edge function error:', errorText)
           throw new Error(`Edge function failed: ${response.status} ${errorText}`)
         }
 
         const result = await response.json()
-        console.log('Edge function result:', result)
         
         if (!result.success) {
           throw new Error(result.error || 'Processing failed')
         }
       } catch (processingError) {
-        console.error('Processing initiation error:', processingError)
         // Update story status to failed
         await db.updateStory(story.id, { processing_status: 'failed' })
         throw processingError
@@ -200,7 +176,6 @@ export function useStories() {
       queryClient.invalidateQueries({ queryKey: ['user-stats', user?.id] })
     },
     onError: (error) => {
-      console.error('Error creating story:', error)
       setProcessingStoryId(null)
     }
   })
@@ -219,7 +194,6 @@ export function useStories() {
       if (error) throw error
       return data
     } catch (error) {
-      console.error('Error getting story by ID:', error)
       return null
     }
   }

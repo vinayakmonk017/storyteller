@@ -120,15 +120,12 @@ export const auth = {
     }
 
     try {
-      console.log('Attempting to sign up user:', email)
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
       })
-      console.log('Sign up result:', { user: data.user?.id, error })
       return { data, error }
     } catch (error) {
-      console.error('Auth signUp error:', error)
       return { data: null, error }
     }
   },
@@ -142,15 +139,12 @@ export const auth = {
     }
 
     try {
-      console.log('Attempting to sign in user:', email)
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
-      console.log('Sign in result:', { user: data.user?.id, error })
       return { data, error }
     } catch (error) {
-      console.error('Auth signIn error:', error)
       return { data: null, error }
     }
   },
@@ -161,12 +155,9 @@ export const auth = {
     }
 
     try {
-      console.log('Attempting to sign out')
       const { error } = await supabase.auth.signOut()
-      console.log('Sign out result:', { error })
       return { error }
     } catch (error) {
-      console.error('Auth signOut error:', error)
       return { error }
     }
   },
@@ -177,25 +168,19 @@ export const auth = {
     }
 
     try {
-      console.log('Getting current user...')
       const { data: { user }, error } = await supabase.auth.getUser()
-      console.log('Current user result:', { user: user?.id, error })
       return { user, error }
     } catch (error) {
-      console.error('Auth getCurrentUser error:', error)
       return { user: null, error }
     }
   },
 
   onAuthStateChange: (callback: (event: string, session: any) => void) => {
     if (!isSupabaseConfigured()) {
-      console.warn('Supabase not configured - auth state changes will not work')
       return { data: { subscription: { unsubscribe: () => {} } } }
     }
 
-    console.log('Setting up auth state change listener')
     return supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth state change event:', event, session?.user?.id)
       callback(event, session)
     })
   }
@@ -210,16 +195,13 @@ export const db = {
     }
 
     try {
-      console.log('Getting user profile for:', userId)
       const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('id', userId)
         .single()
-      console.log('Get profile result:', { data: !!data, error })
       return { data, error }
     } catch (error) {
-      console.error('getUserProfile error:', error)
       return { data: null, error }
     }
   },
@@ -230,16 +212,13 @@ export const db = {
     }
 
     try {
-      console.log('Creating user profile:', profile.id)
       const { data, error } = await supabase
         .from('user_profiles')
         .insert(profile)
         .select()
         .single()
-      console.log('Create profile result:', { data: !!data, error })
       return { data, error }
     } catch (error) {
-      console.error('createUserProfile error:', error)
       return { data: null, error }
     }
   },
@@ -250,17 +229,14 @@ export const db = {
     }
 
     try {
-      console.log('Updating user profile:', userId)
       const { data, error } = await supabase
         .from('user_profiles')
         .update(updates)
         .eq('id', userId)
         .select()
         .single()
-      console.log('Update profile result:', { data: !!data, error })
       return { data, error }
     } catch (error) {
-      console.error('updateUserProfile error:', error)
       return { data: null, error }
     }
   },
@@ -272,16 +248,13 @@ export const db = {
     }
 
     try {
-      console.log('Creating story for user:', story.user_id)
       const { data, error } = await supabase
         .from('stories')
         .insert(story)
         .select()
         .single()
-      console.log('Create story result:', { data: !!data, error })
       return { data, error }
     } catch (error) {
-      console.error('createStory error:', error)
       return { data: null, error }
     }
   },
@@ -292,7 +265,6 @@ export const db = {
     }
 
     try {
-      console.log('Getting stories for user:', userId)
       const { data, error } = await supabase
         .from('stories')
         .select(`
@@ -302,10 +274,8 @@ export const db = {
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(limit)
-      console.log('Get stories result:', { count: data?.length, error })
       return { data, error }
     } catch (error) {
-      console.error('getUserStories error:', error)
       return { data: null, error }
     }
   },
@@ -316,17 +286,14 @@ export const db = {
     }
 
     try {
-      console.log('Updating story:', storyId)
       const { data, error } = await supabase
         .from('stories')
         .update(updates)
         .eq('id', storyId)
         .select()
         .single()
-      console.log('Update story result:', { data: !!data, error })
       return { data, error }
     } catch (error) {
-      console.error('updateStory error:', error)
       return { data: null, error }
     }
   },
@@ -338,16 +305,13 @@ export const db = {
     }
 
     try {
-      console.log('Getting user stats for:', userId)
       const { data, error } = await supabase
         .from('user_stats')
         .select('*')
         .eq('user_id', userId)
         .maybeSingle()
-      console.log('Get stats result:', { data: !!data, error })
       return { data, error }
     } catch (error) {
-      console.error('getUserStats error:', error)
       return { data: null, error }
     }
   },
@@ -359,15 +323,12 @@ export const db = {
     }
 
     try {
-      console.log('Getting all achievements')
       const { data, error } = await supabase
         .from('achievements')
         .select('*')
         .order('points', { ascending: true })
-      console.log('Get achievements result:', { count: data?.length, error })
       return { data, error }
     } catch (error) {
-      console.error('getAllAchievements error:', error)
       return { data: null, error }
     }
   },
@@ -378,7 +339,6 @@ export const db = {
     }
 
     try {
-      console.log('Getting user achievements for:', userId)
       const { data, error } = await supabase
         .from('user_achievements')
         .select(`
@@ -387,10 +347,8 @@ export const db = {
         `)
         .eq('user_id', userId)
         .order('earned_at', { ascending: false })
-      console.log('Get user achievements result:', { count: data?.length, error })
       return { data, error }
     } catch (error) {
-      console.error('getUserAchievements error:', error)
       return { data: null, error }
     }
   }
@@ -404,17 +362,14 @@ export const storage = {
     }
 
     try {
-      console.log('Uploading audio file:', fileName)
       const { data, error } = await supabase.storage
         .from('audio_recordings')
         .upload(fileName, file, {
           cacheControl: '3600',
           upsert: false
         })
-      console.log('Upload result:', { data: !!data, error })
       return { data, error }
     } catch (error) {
-      console.error('uploadAudio error:', error)
       return { data: null, error }
     }
   },
@@ -429,10 +384,8 @@ export const storage = {
         .from('audio_recordings')
         .getPublicUrl(fileName)
       
-      console.log('Generated audio URL for:', fileName, 'URL:', data.publicUrl)
       return data.publicUrl
     } catch (error) {
-      console.error('Error generating audio URL:', error)
       return 'placeholder-url'
     }
   },
@@ -444,15 +397,12 @@ export const storage = {
     }
 
     try {
-      console.log('Getting signed URL for:', fileName)
       const { data, error } = await supabase.storage
         .from('audio_recordings')
         .createSignedUrl(fileName, expiresIn)
       
-      console.log('Signed URL result:', { data: !!data, error })
       return { data, error }
     } catch (error) {
-      console.error('getSignedAudioUrl error:', error)
       return { data: null, error }
     }
   },
@@ -463,14 +413,11 @@ export const storage = {
     }
 
     try {
-      console.log('Deleting audio file:', fileName)
       const { data, error } = await supabase.storage
         .from('audio_recordings')
         .remove([fileName])
-      console.log('Delete result:', { data, error })
       return { data, error }
     } catch (error) {
-      console.error('deleteAudio error:', error)
       return { data: null, error }
     }
   }
