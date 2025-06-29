@@ -115,13 +115,11 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
   const loadNewStory = async () => {
     setIsLoadingStory(true)
     setStoryError(null)
-    console.log({selectedDuration})
     try {
       // Calculate target word count based on duration
       // Average reading speed is about 150-200 words per minute
       // We'll use 175 words per minute as a baseline
       const targetWords = Math.round((selectedDuration/60) * 120)
-      console.log({targetWords})
       const story = await getRandomStory(selectedGenre, targetWords)
       setCurrentStory(story)
     } catch (error) {
