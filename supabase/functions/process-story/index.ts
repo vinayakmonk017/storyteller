@@ -27,28 +27,33 @@ Deno.serve(async (req) => {
 
     const { storyId, audioUrl, feedbackPersonality }: ProcessStoryRequest = await req.json()
 
-    console.log(`Processing story ${storyId} with audio URL: ${audioUrl}`)
+    console.log(`🚀 Processing story ${storyId} with audio URL: ${audioUrl}`)
 
-    // Update story status to processing
+    // Step 1: Update story status to processing
+    console.log('📝 Updating story status to processing...')
     const { error: updateError } = await supabaseClient
       .from('stories')
       .update({ processing_status: 'processing' })
       .eq('id', storyId)
 
     if (updateError) {
-      console.error('Error updating story status:', updateError)
+      console.error('❌ Error updating story status to processing:', updateError)
       throw updateError
     }
+    console.log('✅ Story status updated to processing')
 
-    // Step 1: Transcribe audio using OpenAI Whisper
+    // Step 2: Transcribe audio using OpenAI Whisper
+    console.log('🎤 Starting transcription...')
     const transcript = await transcribeAudio(audioUrl)
-    console.log('Generated transcript:', transcript.substring(0, 100) + '...')
+    console.log('✅ Transcription completed:', transcript.substring(0, 100) + '...')
 
-    // Step 2: Generate AI feedback using OpenAI GPT
+    // Step 3: Generate AI feedback using OpenAI GPT
+    console.log('🤖 Generating feedback...')
     const feedback = await generateFeedback(transcript, feedbackPersonality)
-    console.log('Generated feedback:', feedback.detailed_feedback.substring(0, 100) + '...')
+    console.log('✅ Feedback generated:', feedback.detailed_feedback.substring(0, 100) + '...')
 
-    // Step 3: Save feedback to database
+    // Step 4: Save feedback to database
+    console.log('💾 Saving feedback to database...')
     const { error: feedbackError } = await supabaseClient
       .from('story_feedback')
       .insert({
@@ -61,31 +66,56 @@ Deno.serve(async (req) => {
       })
 
     if (feedbackError) {
-      console.error('Error saving feedback:', feedbackError)
+      console.error('❌ Error saving feedback:', feedbackError)
       throw feedbackError
     }
+    console.log('✅ Feedback saved successfully')
 
-    // Step 4: Update story with transcript and completion status
+    // Step 5: Update story with transcript and completion status
+    console.log('🏁 Updating story to completed status...')
     const { error: finalUpdateError } = await supabaseClient
       .from('stories')
       .update({
         transcript,
-        processing_status: 'completed'
+        processing_status: 'completed',
+        updated_at: new Date().toISOString()
       })
       .eq('id', storyId)
 
     if (finalUpdateError) {
-      console.error('Error completing story:', finalUpdateError)
+      console.error('❌ Error completing story:', finalUpdateError)
       throw finalUpdateError
     }
+    console.log('✅ Story status updated to completed')
 
-    // Step 5: Check for new achievements
+    // Step 6: Verify the update worked
+    console.log('🔍 Verifying story status update...')
+    const { data: verifyStory, error: verifyError } = await supabaseClient
+      .from('stories')
+      .select('id, processing_status, updated_at')
+      .eq('id', storyId)
+      .single()
+
+    if (verifyError) {
+      console.error('❌ Error verifying story:', verifyError)
+    } else {
+      console.log('📊 Story verification result:', verifyStory)
+    }
+
+    // Step 7: Check for new achievements
+    console.log('🏆 Checking for achievements...')
     await checkAchievements(supabaseClient, storyId)
 
-    console.log(`Successfully processed story ${storyId}`)
+    console.log(`🎉 Successfully processed story ${storyId}`)
 
     return new Response(
-      JSON.stringify({ success: true, transcript, feedback }),
+      JSON.stringify({ 
+        success: true, 
+        transcript, 
+        feedback,
+        storyStatus: 'completed',
+        message: 'Story processed successfully'
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
@@ -93,7 +123,7 @@ Deno.serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Error processing story:', error)
+    console.error('💥 Error processing story:', error)
     
     // Try to update story status to failed
     try {
@@ -103,16 +133,31 @@ Deno.serve(async (req) => {
       )
       
       const { storyId } = await req.json()
-      await supabaseClient
+      console.log('❌ Setting story status to failed for:', storyId)
+      
+      const { error: failedUpdateError } = await supabaseClient
         .from('stories')
-        .update({ processing_status: 'failed' })
+        .update({ 
+          processing_status: 'failed',
+          updated_at: new Date().toISOString()
+        })
         .eq('id', storyId)
+        
+      if (failedUpdateError) {
+        console.error('❌ Error updating story to failed status:', failedUpdateError)
+      } else {
+        console.log('✅ Story status updated to failed')
+      }
     } catch (updateError) {
-      console.error('Error updating story to failed status:', updateError)
+      console.error('💥 Error updating story to failed status:', updateError)
     }
     
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        success: false,
+        error: error.message,
+        storyStatus: 'failed'
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,
@@ -125,12 +170,12 @@ async function transcribeAudio(audioUrl: string): Promise<string> {
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
   
   if (!openaiApiKey) {
-    console.warn('OpenAI API key not found, using mock transcription')
+    console.warn('⚠️ OpenAI API key not found, using mock transcription')
     return getMockTranscript()
   }
 
   try {
-    console.log('Downloading audio file from:', audioUrl)
+    console.log('📥 Downloading audio file from:', audioUrl)
     
     // Download the audio file
     const audioResponse = await fetch(audioUrl)
@@ -139,7 +184,7 @@ async function transcribeAudio(audioUrl: string): Promise<string> {
     }
     
     const audioBlob = await audioResponse.blob()
-    console.log('Audio file downloaded, size:', audioBlob.size, 'bytes')
+    console.log('📦 Audio file downloaded, size:', audioBlob.size, 'bytes')
 
     // Create form data for OpenAI Whisper API
     const formData = new FormData()
@@ -148,7 +193,7 @@ async function transcribeAudio(audioUrl: string): Promise<string> {
     formData.append('language', 'en')
     formData.append('response_format', 'text')
 
-    console.log('Sending audio to OpenAI Whisper API...')
+    console.log('🎤 Sending audio to OpenAI Whisper API...')
     
     // Call OpenAI Whisper API
     const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -161,18 +206,18 @@ async function transcribeAudio(audioUrl: string): Promise<string> {
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('OpenAI Whisper API error:', response.status, errorText)
+      console.error('❌ OpenAI Whisper API error:', response.status, errorText)
       throw new Error(`OpenAI Whisper API error: ${response.status} ${errorText}`)
     }
 
     const transcript = await response.text()
-    console.log('Transcription completed successfully')
+    console.log('✅ Transcription completed successfully')
     
     return transcript.trim()
     
   } catch (error) {
-    console.error('Error in transcribeAudio:', error)
-    console.warn('Falling back to mock transcription')
+    console.error('💥 Error in transcribeAudio:', error)
+    console.warn('⚠️ Falling back to mock transcription')
     return getMockTranscript()
   }
 }
@@ -187,7 +232,7 @@ async function generateFeedback(transcript: string, personality: string): Promis
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
   
   if (!openaiApiKey) {
-    console.warn('OpenAI API key not found, using mock feedback')
+    console.warn('⚠️ OpenAI API key not found, using mock feedback')
     return getMockFeedback(personality)
   }
 
@@ -219,7 +264,7 @@ Please provide your response in the following JSON format:
 
 The score should be between 1-10. Focus on being constructive and helpful while maintaining your personality style.`
 
-    console.log('Sending transcript to OpenAI GPT API for feedback...')
+    console.log('🤖 Sending transcript to OpenAI GPT API for feedback...')
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -241,14 +286,14 @@ The score should be between 1-10. Focus on being constructive and helpful while 
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('OpenAI GPT API error:', response.status, errorText)
+      console.error('❌ OpenAI GPT API error:', response.status, errorText)
       throw new Error(`OpenAI GPT API error: ${response.status} ${errorText}`)
     }
 
     const data = await response.json()
     const feedbackContent = data.choices[0].message.content
     
-    console.log('Feedback generation completed successfully')
+    console.log('✅ Feedback generation completed successfully')
     
     try {
       const parsedFeedback = JSON.parse(feedbackContent)
@@ -260,14 +305,14 @@ The score should be between 1-10. Focus on being constructive and helpful while 
         score: parsedFeedback.score || 7
       }
     } catch (parseError) {
-      console.error('Error parsing OpenAI response:', parseError)
-      console.warn('Falling back to mock feedback')
+      console.error('❌ Error parsing OpenAI response:', parseError)
+      console.warn('⚠️ Falling back to mock feedback')
       return getMockFeedback(personality)
     }
     
   } catch (error) {
-    console.error('Error in generateFeedback:', error)
-    console.warn('Falling back to mock feedback')
+    console.error('💥 Error in generateFeedback:', error)
+    console.warn('⚠️ Falling back to mock feedback')
     return getMockFeedback(personality)
   }
 }
@@ -467,12 +512,12 @@ async function checkAchievements(supabaseClient: any, storyId: string) {
         .ignore()
 
       if (error) {
-        console.error(`Error granting achievement ${achievementId}:`, error)
+        console.error(`❌ Error granting achievement ${achievementId}:`, error)
       } else {
-        console.log(`Granted achievement ${achievementId} to user ${story.user_id}`)
+        console.log(`🏆 Granted achievement ${achievementId} to user ${story.user_id}`)
       }
     }
   } catch (error) {
-    console.error('Error checking achievements:', error)
+    console.error('💥 Error checking achievements:', error)
   }
 }
