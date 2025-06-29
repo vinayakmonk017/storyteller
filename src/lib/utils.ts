@@ -25,7 +25,14 @@ export async function getRandomStory(genre: string): Promise<{ title: string; co
     urlValid: supabaseUrl && !supabaseUrl.includes('placeholder')
   })
 
-  if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder')) {
+  // Check for missing, empty, or placeholder values
+  if (!supabaseUrl || 
+      !supabaseKey || 
+      supabaseUrl.includes('placeholder') ||
+      supabaseUrl === 'your_supabase_project_url_here' ||
+      supabaseKey === 'your_supabase_anon_key_here' ||
+      supabaseUrl.trim() === '' ||
+      supabaseKey.trim() === '') {
     console.log('⚠️ Supabase not configured, using fallback story')
     return getFallbackStory(genre)
   }
