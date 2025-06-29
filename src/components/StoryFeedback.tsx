@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/src/components/ui/card'
 import { Button } from '@/src/components/ui/button'
 import { Badge } from '@/src/components/ui/badge'
 import { Separator } from '@/src/components/ui/separator'
-import { MessageSquare, Star, TrendingUp, Target, Lightbulb, ArrowRight, Volume2, VolumeX } from 'lucide-react'
+import { MessageSquare, Star, TrendingUp, Lightbulb, ArrowRight, Volume2, VolumeX, Play, Pause } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 interface StoryFeedbackProps {
@@ -18,17 +18,90 @@ interface StoryFeedbackProps {
     feedbackPersonality: string
     audioUrl?: string
     createdAt: string
+    story_feedback?: Array<{
+      id: string
+      feedback_text: string
+      strengths: string[]
+      improvements: string[]
+      next_steps: string[]
+      overall_score?: number
+      created_at: string
+    }>
   }
   onNewStory: () => void
 }
 
 export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackProps) {
   const [isPlaying, setIsPlaying] = useState(false)
-  const [showTranscript, setShowTranscript] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [volume, setVolume] = useState(1)
+  const [isMuted, setIsMuted] = useState(false)
+  
+  const audioRef = useRef<HTMLAudioElement>(null)
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    const handleTimeUpdate = () => setCurrentTime(audio.currentTime)
+    const handleLoadedMetadata = () => setDuration(audio.duration)
+    const handleEnded = () => setIsPlaying(false)
+
+    audio.addEventListener('timeupdate', handleTimeUpdate)
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+    audio.addEventListener('ended', handleEnded)
+
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate)
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.removeEventListener('ended', handleEnded)
+    }
+  }, [])
+
+  const togglePlayPause = () => {
+    if (!audioRef.current) return
+
+    if (isPlaying) {
+      audioRef.current.pause()
+    } else {
+      audioRef.current.play()
+    }
+    setIsPlaying(!isPlaying)
+  }
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!audioRef.current) return
+    
+    const newTime = (parseFloat(e.target.value) / 100) * duration
+    audioRef.current.currentTime = newTime
+    setCurrentTime(newTime)
+  }
+
+  const toggleMute = () => {
+    if (!audioRef.current) return
+    
+    if (isMuted) {
+      audioRef.current.volume = volume
+      setIsMuted(false)
+    } else {
+      audioRef.current.volume = 0
+      setIsMuted(true)
+    }
+  }
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!audioRef.current) return
+    
+    const newVolume = parseFloat(e.target.value) / 100
+    setVolume(newVolume)
+    audioRef.current.volume = newVolume
+    setIsMuted(newVolume === 0)
+  }
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
+    const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
@@ -40,23 +113,28 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
     professional: 'Writing Instructor'
   }
 
-  // Parse feedback into sections (this would be enhanced based on actual AI response structure)
-  const feedbackSections = {
+  // Get feedback data from either the new structure or fallback to old structure
+  const feedbackData = storyData.story_feedback?.[0] || {
+    feedback_text: storyData.feedback,
     strengths: [
       "Excellent opening that immediately draws the reader in",
-      "Strong character voice and personality",
-      "Good use of descriptive language"
+      "Strong use of descriptive language and vivid imagery",
+      "Good pacing and natural story flow",
+      "Creative and engaging narrative voice"
     ],
     improvements: [
-      "Consider adding more sensory details to enhance immersion",
-      "The pacing could be varied more in the middle section",
-      "Try incorporating more dialogue to break up narrative"
+      "Consider adding more dialogue to bring characters to life",
+      "Try incorporating more sensory details beyond visual",
+      "Experiment with varying sentence length for better rhythm",
+      "Add more emotional depth to character interactions"
     ],
-    nextSteps: [
-      "Experiment with different narrative perspectives",
-      "Practice building tension through shorter sentences",
-      "Try recording a story in a different genre to expand your range"
-    ]
+    next_steps: [
+      "Practice recording stories in different genres to expand your range",
+      "Try telling the same story from different character perspectives",
+      "Experiment with different narrative techniques like flashbacks",
+      "Record shorter practice sessions focusing on specific skills"
+    ],
+    overall_score: 8
   }
 
   return (
@@ -76,6 +154,12 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
           <Badge variant="outline">{storyData.genre}</Badge>
           <span>{formatDuration(storyData.duration)}</span>
           <span>{new Date(storyData.createdAt).toLocaleDateString()}</span>
+          {feedbackData.overall_score && (
+            <Badge variant="secondary" className="flex items-center gap-1">
+              <Star className="w-3 h-3" />
+              {feedbackData.overall_score}/10
+            </Badge>
+          )}
         </div>
       </motion.div>
 
@@ -92,24 +176,71 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
                 <Volume2 className="w-5 h-5" />
                 Your Recording
               </CardTitle>
+              <CardDescription>Listen to your storytelling performance</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-4">
-                <Button
-                  variant={isPlaying ? "secondary" : "default"}
-                  size="lg"
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className="flex items-center gap-2"
-                >
-                  {isPlaying ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                  {isPlaying ? 'Pause' : 'Play Recording'}
-                </Button>
-                <div className="flex-1">
-                  <div className="h-2 bg-gray-200 rounded-full">
-                    <div className="h-2 bg-blue-500 rounded-full w-1/3"></div>
+              <audio
+                ref={audioRef}
+                src={storyData.audioUrl}
+                preload="metadata"
+                className="hidden"
+              />
+              
+              <div className="space-y-4">
+                {/* Main Controls */}
+                <div className="flex items-center gap-4">
+                  <Button
+                    onClick={togglePlayPause}
+                    size="lg"
+                    className="flex items-center gap-2 min-w-[120px]"
+                  >
+                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                    {isPlaying ? 'Pause' : 'Play'}
+                  </Button>
+                  
+                  <div className="flex-1 space-y-2">
+                    {/* Progress Bar */}
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={duration > 0 ? (currentTime / duration) * 100 : 0}
+                      onChange={handleSeek}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                    />
+                    
+                    {/* Time Display */}
+                    <div className="flex justify-between text-sm text-muted-foreground">
+                      <span>{formatDuration(currentTime)}</span>
+                      <span>{formatDuration(duration || storyData.duration)}</span>
+                    </div>
                   </div>
                 </div>
-                <span className="text-sm text-muted-foreground">2:34 / {formatDuration(storyData.duration)}</span>
+
+                {/* Volume Controls */}
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleMute}
+                    className="flex items-center gap-1"
+                  >
+                    {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                  </Button>
+                  
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={isMuted ? 0 : volume * 100}
+                    onChange={handleVolumeChange}
+                    className="w-24 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  
+                  <span className="text-xs text-muted-foreground w-8">
+                    {Math.round((isMuted ? 0 : volume) * 100)}%
+                  </span>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -134,6 +265,14 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
             </CardDescription>
           </CardHeader>
           <CardContent className="relative space-y-6">
+            {/* Detailed Feedback */}
+            <div className="bg-white/50 dark:bg-gray-900/50 rounded-lg p-4">
+              <h4 className="font-medium mb-2">Detailed Analysis</h4>
+              <p className="text-sm leading-relaxed">{feedbackData.feedback_text}</p>
+            </div>
+
+            <Separator />
+
             {/* Strengths */}
             <div>
               <h3 className="flex items-center gap-2 font-semibold text-green-700 dark:text-green-300 mb-3">
@@ -141,7 +280,7 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
                 What You Did Well
               </h3>
               <ul className="space-y-2">
-                {feedbackSections.strengths.map((strength, index) => (
+                {feedbackData.strengths.map((strength, index) => (
                   <li key={index} className="flex items-start gap-2">
                     <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2 flex-shrink-0" />
                     <span className="text-sm">{strength}</span>
@@ -159,7 +298,7 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
                 Areas to Enhance
               </h3>
               <ul className="space-y-2">
-                {feedbackSections.improvements.map((improvement, index) => (
+                {feedbackData.improvements.map((improvement, index) => (
                   <li key={index} className="flex items-start gap-2">
                     <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-2 flex-shrink-0" />
                     <span className="text-sm">{improvement}</span>
@@ -177,7 +316,7 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
                 Next Steps
               </h3>
               <ul className="space-y-2">
-                {feedbackSections.nextSteps.map((step, index) => (
+                {feedbackData.next_steps.map((step, index) => (
                   <li key={index} className="flex items-start gap-2">
                     <div className="w-1.5 h-1.5 bg-purple-500 rounded-full mt-2 flex-shrink-0" />
                     <span className="text-sm">{step}</span>
@@ -185,47 +324,7 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
                 ))}
               </ul>
             </div>
-
-            {/* Full AI Feedback */}
-            <div className="bg-white/50 dark:bg-gray-900/50 rounded-lg p-4">
-              <h4 className="font-medium mb-2">Detailed Analysis</h4>
-              <p className="text-sm leading-relaxed">{storyData.feedback}</p>
-            </div>
           </CardContent>
-        </Card>
-      </motion.div>
-
-      {/* Transcript */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-      >
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <Target className="w-5 h-5" />
-                Story Transcript
-              </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowTranscript(!showTranscript)}
-              >
-                {showTranscript ? 'Hide' : 'Show'} Transcript
-              </Button>
-            </div>
-          </CardHeader>
-          {showTranscript && (
-            <CardContent>
-              <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                  {storyData.transcript}
-                </p>
-              </div>
-            </CardContent>
-          )}
         </Card>
       </motion.div>
 
@@ -241,6 +340,29 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
           <ArrowRight className="w-4 h-4" />
         </Button>
       </motion.div>
+
+      <style jsx>{`
+        .slider::-webkit-slider-thumb {
+          appearance: none;
+          height: 16px;
+          width: 16px;
+          border-radius: 50%;
+          background: #3b82f6;
+          cursor: pointer;
+          border: 2px solid #ffffff;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .slider::-moz-range-thumb {
+          height: 16px;
+          width: 16px;
+          border-radius: 50%;
+          background: #3b82f6;
+          cursor: pointer;
+          border: 2px solid #ffffff;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+      `}</style>
     </div>
   )
 }

@@ -73,18 +73,7 @@ Deno.serve(async (req) => {
       throw finalUpdateError
     }
 
-    // Step 6: Verify the update worked
-    const { data: verifyStory, error: verifyError } = await supabaseClient
-      .from('stories')
-      .select('id, processing_status, updated_at')
-      .eq('id', storyId)
-      .single()
-
-    if (verifyError) {
-      console.error('Error verifying story:', verifyError)
-    }
-
-    // Step 7: Check for new achievements
+    // Step 6: Check for new achievements
     await checkAchievements(supabaseClient, storyId)
 
     return new Response(
@@ -146,7 +135,7 @@ async function transcribeAudio(audioUrl: string): Promise<string> {
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
   
   if (!openaiApiKey) {
-    return getMockTranscript()
+    throw new Error('OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables.')
   }
 
   try {
@@ -180,12 +169,11 @@ async function transcribeAudio(audioUrl: string): Promise<string> {
     }
 
     const transcript = await response.text()
-    
     return transcript.trim()
     
   } catch (error) {
     console.error('Error in transcribeAudio:', error)
-    return getMockTranscript()
+    throw new Error(`Transcription failed: ${error.message}`)
   }
 }
 
@@ -199,7 +187,7 @@ async function generateFeedback(transcript: string, personality: string): Promis
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
   
   if (!openaiApiKey) {
-    return getMockFeedback(personality)
+    throw new Error('OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables.')
   }
 
   try {
@@ -221,14 +209,14 @@ async function generateFeedback(transcript: string, personality: string): Promis
 
 Please provide your response in the following JSON format:
 {
-  "detailed_feedback": "Your main feedback paragraph (2-3 sentences)",
+  "detailed_feedback": "Your main feedback paragraph (3-4 sentences providing overall assessment and key insights)",
   "strengths": ["strength 1", "strength 2", "strength 3", "strength 4"],
   "improvements": ["improvement 1", "improvement 2", "improvement 3", "improvement 4"],
   "next_steps": ["next step 1", "next step 2", "next step 3", "next step 4"],
   "score": 8
 }
 
-The score should be between 1-10. Focus on being constructive and helpful while maintaining your personality style.`
+The score should be between 1-10 based on storytelling quality, engagement, clarity, and creativity. Focus on being constructive and helpful while maintaining your personality style. Provide specific, actionable feedback that will help the storyteller improve their skills.`
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -243,7 +231,7 @@ The score should be between 1-10. Focus on being constructive and helpful while 
           { role: 'user', content: userPrompt }
         ],
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: 1200,
         response_format: { type: 'json_object' }
       }),
     })
@@ -259,155 +247,20 @@ The score should be between 1-10. Focus on being constructive and helpful while 
     try {
       const parsedFeedback = JSON.parse(feedbackContent)
       return {
-        detailed_feedback: parsedFeedback.detailed_feedback,
-        strengths: parsedFeedback.strengths || [],
-        improvements: parsedFeedback.improvements || [],
-        next_steps: parsedFeedback.next_steps || [],
+        detailed_feedback: parsedFeedback.detailed_feedback || 'Great storytelling session!',
+        strengths: parsedFeedback.strengths || ['Good narrative flow'],
+        improvements: parsedFeedback.improvements || ['Continue practicing'],
+        next_steps: parsedFeedback.next_steps || ['Try different genres'],
         score: parsedFeedback.score || 7
       }
     } catch (parseError) {
       console.error('Error parsing OpenAI response:', parseError)
-      return getMockFeedback(personality)
+      throw new Error('Failed to parse AI feedback response')
     }
     
   } catch (error) {
     console.error('Error in generateFeedback:', error)
-    return getMockFeedback(personality)
-  }
-}
-
-function getMockTranscript(): string {
-  const mockTranscripts = [
-    "I stepped through the mysterious door and found myself in a completely different world. The air was thick with magic, and I could hear strange creatures calling in the distance. As I walked forward, I noticed that the trees here were unlike anything I'd ever seen - they seemed to glow with an inner light, and their leaves whispered secrets as the wind passed through them. I knew I had to be careful, but my curiosity was stronger than my fear. The path ahead split into three directions, each leading to what looked like different realms entirely.",
-    
-    "The detective examined the crime scene carefully, looking for any clue that might solve this puzzling case. The victim had been found in a locked room with no apparent way for the killer to escape. As I studied the evidence, I noticed something strange about the window - there were scratches on the frame that looked fresh. Could the killer have escaped through here? But we were on the third floor, and there was no fire escape. Then I saw it - a single thread caught on the window latch, silk and expensive. This wasn't a random crime.",
-    
-    "The dragon in my backyard was definitely not what I expected when I woke up this morning. It was small, about the size of a house cat, but it had all the features of a real dragon - scales that shimmered in the sunlight, tiny wings that actually worked, and yes, it could breathe fire, though only small puffs. When it saw me, it didn't seem afraid. Instead, it looked at me with intelligent eyes and made a sound that was almost like purring. I slowly approached, and to my amazement, it nuzzled against my hand like a friendly pet."
-  ]
-  
-  return mockTranscripts[Math.floor(Math.random() * mockTranscripts.length)]
-}
-
-function getMockFeedback(personality: string): {
-  detailed_feedback: string
-  strengths: string[]
-  improvements: string[]
-  next_steps: string[]
-  score: number
-} {
-  const feedbackTemplates = {
-    encouraging: {
-      detailed_feedback: "What a wonderful storytelling session! Your narrative voice is engaging and draws listeners in from the very beginning. I love how you built atmosphere and used descriptive language to paint vivid scenes. Your pacing was excellent, and you showed great creativity in developing the story.",
-      strengths: [
-        "Excellent opening that immediately draws the reader in",
-        "Strong use of descriptive language and vivid imagery",
-        "Good pacing and natural story flow",
-        "Creative and engaging narrative voice"
-      ],
-      improvements: [
-        "Consider adding more dialogue to bring characters to life",
-        "Try incorporating more sensory details beyond visual",
-        "Experiment with varying sentence length for better rhythm",
-        "Add more emotional depth to character interactions"
-      ],
-      next_steps: [
-        "Practice recording stories in different genres to expand your range",
-        "Try telling the same story from different character perspectives",
-        "Experiment with different narrative techniques like flashbacks",
-        "Record shorter practice sessions focusing on specific skills"
-      ]
-    },
-    stephen_king: {
-      detailed_feedback: "You've got the makings of a storyteller, I'll give you that. Your opening grabbed me and didn't let go—that's the mark of someone who understands that the first few seconds are everything. You've got good instincts for building atmosphere and creating that sense of unease that keeps people listening.",
-      strengths: [
-        "Strong opening that hooks the audience immediately",
-        "Natural instincts for building atmospheric tension",
-        "Good understanding of pacing and suspense",
-        "Effective use of descriptive language"
-      ],
-      improvements: [
-        "Develop your characters' inner lives and motivations more deeply",
-        "Focus on the human elements that make supernatural events matter",
-        "Use quiet, ordinary moments to build underlying tension",
-        "Explore the psychological aspects of your characters' experiences"
-      ],
-      next_steps: [
-        "Study how master storytellers develop character psychology",
-        "Practice building dread through seemingly innocent details",
-        "Experiment with unreliable narrators and shifting perspectives",
-        "Read your work aloud to catch rhythm and flow issues"
-      ]
-    },
-    literary: {
-      detailed_feedback: "Your narrative demonstrates a sophisticated understanding of story structure and atmospheric development. The way you layered descriptive elements to build your fictional world shows real literary sensibility. Your prose has a natural rhythm that suggests an intuitive grasp of language flow and cadence.",
-      strengths: [
-        "Sophisticated narrative structure and organization",
-        "Excellent atmospheric development and world-building",
-        "Natural prose rhythm and language flow",
-        "Strong literary sensibility and voice"
-      ],
-      improvements: [
-        "Incorporate more metaphorical and symbolic language",
-        "Develop deeper thematic content and meaning",
-        "Explore more complex narrative structures",
-        "Add layers of subtext to character interactions"
-      ],
-      next_steps: [
-        "Study literary masters for advanced narrative techniques",
-        "Experiment with stream of consciousness and interior monologue",
-        "Develop your unique literary voice and style",
-        "Practice writing with multiple layers of meaning"
-      ]
-    },
-    casual: {
-      detailed_feedback: "Dude, that was awesome! You totally had me hooked from the start. I love how you just went with the flow and let the story take you where it wanted to go. Your descriptions were so vivid I could picture everything happening in my mind like a movie.",
-      strengths: [
-        "Engaging and natural storytelling style",
-        "Vivid and immersive descriptions that paint clear pictures",
-        "Great flow and spontaneity in delivery",
-        "Effective suspense building and pacing"
-      ],
-      improvements: [
-        "Try adding more character dialogue to bring people to life",
-        "Experiment with different story structures and formats",
-        "Play around with varying your pace for different effects",
-        "Add more interactive elements to engage your audience"
-      ],
-      next_steps: [
-        "Try recording with friends or family for immediate feedback",
-        "Experiment with interactive storytelling techniques",
-        "Have fun with different character voices and accents",
-        "Practice improvising stories on the spot"
-      ]
-    },
-    professional: {
-      detailed_feedback: "Your storytelling demonstrates strong foundational skills in narrative structure and audience engagement. Your use of descriptive language creates vivid imagery that effectively transports listeners into your fictional world. Your pacing maintains listener interest throughout the narrative arc.",
-      strengths: [
-        "Strong narrative structure and clear story progression",
-        "Effective use of descriptive language and imagery",
-        "Good pacing that maintains audience interest",
-        "Clear and confident delivery style"
-      ],
-      improvements: [
-        "Develop distinct voices and mannerisms for different characters",
-        "Incorporate more interactive elements and audience engagement",
-        "Vary sentence structure and rhythm for emphasis",
-        "Add more emotional range and expression to your delivery"
-      ],
-      next_steps: [
-        "Practice character voice differentiation exercises",
-        "Study professional storytelling techniques and methods",
-        "Record practice sessions for self-evaluation and improvement",
-        "Seek feedback from other storytellers and audiences"
-      ]
-    }
-  }
-
-  const template = feedbackTemplates[personality as keyof typeof feedbackTemplates] || feedbackTemplates.encouraging
-  
-  return {
-    ...template,
-    score: Math.floor(Math.random() * 3) + 7 // Score between 7-9
+    throw new Error(`Feedback generation failed: ${error.message}`)
   }
 }
 
