@@ -4,6 +4,7 @@ import { Button } from '@/src/components/ui/button'
 import { Badge } from '@/src/components/ui/badge'
 import { Separator } from '@/src/components/ui/separator'
 import { Alert, AlertDescription } from '@/src/components/ui/alert'
+import { Skeleton } from '@/src/components/ui/skeleton'
 import { 
   X, 
   Play, 
@@ -20,7 +21,8 @@ import {
   Trash2,
   AlertTriangle,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  BookOpen
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
@@ -55,6 +57,121 @@ interface StoryDetail {
   }>
 }
 
+// Skeleton components for loading states
+const StoryHeaderSkeleton = () => (
+  <div className="space-y-4">
+    <div className="flex items-start justify-between">
+      <div className="flex-1">
+        <Skeleton className="h-8 w-3/4 mb-2" />
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-6 w-20" />
+          <Skeleton className="h-6 w-16" />
+          <Skeleton className="h-6 w-24" />
+        </div>
+      </div>
+      <Skeleton className="h-6 w-20" />
+    </div>
+    
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-6 w-32" />
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i}>
+              <Skeleton className="h-4 w-24 mb-2" />
+              <Skeleton className="h-5 w-32" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  </div>
+)
+
+const StorySkeleton = () => (
+  <Card>
+    <CardHeader>
+      <Skeleton className="h-6 w-20" />
+      <Skeleton className="h-4 w-48" />
+    </CardHeader>
+    <CardContent>
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-3/4" />
+      </div>
+    </CardContent>
+  </Card>
+)
+
+const AudioSkeleton = () => (
+  <Card>
+    <CardHeader>
+      <Skeleton className="h-6 w-32" />
+      <Skeleton className="h-4 w-48" />
+    </CardHeader>
+    <CardContent>
+      <div className="space-y-4">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-11 w-28" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-2 w-full" />
+            <div className="flex justify-between">
+              <Skeleton className="h-4 w-12" />
+              <Skeleton className="h-4 w-12" />
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-8 w-8" />
+          <Skeleton className="h-1 w-24" />
+          <Skeleton className="h-4 w-8" />
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+)
+
+const FeedbackSkeleton = () => (
+  <Card>
+    <CardHeader>
+      <Skeleton className="h-6 w-24" />
+      <Skeleton className="h-4 w-64" />
+    </CardHeader>
+    <CardContent className="space-y-6">
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-5 w-5" />
+        <Skeleton className="h-5 w-32" />
+      </div>
+      
+      <div className="bg-blue-50 p-4 rounded-lg">
+        <Skeleton className="h-5 w-32 mb-2" />
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
+      </div>
+      
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i}>
+          <Skeleton className="h-5 w-40 mb-3" />
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((_, j) => (
+              <div key={j} className="flex items-start gap-2">
+                <Skeleton className="w-1.5 h-1.5 rounded-full mt-2" />
+                <Skeleton className="h-4 flex-1" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </CardContent>
+  </Card>
+)
+
 export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }: StoryDetailModalProps) {
   const [story, setStory] = useState<StoryDetail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -67,6 +184,7 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [generatingFeedback, setGeneratingFeedback] = useState(false)
+  const [audioError, setAudioError] = useState(false)
   
   const audioRef = useRef<HTMLAudioElement>(null)
 
@@ -80,24 +198,34 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
     const audio = audioRef.current
     if (!audio) return
 
-    const handleTimeUpdate = () => setCurrentTime(audio.currentTime)
-    const handleLoadedMetadata = () => setDuration(audio.duration)
+    const handleTimeUpdate = () => setCurrentTime(audio.currentTime || 0)
+    const handleLoadedMetadata = () => {
+      setDuration(audio.duration || 0)
+      setAudioError(false)
+    }
     const handleEnded = () => setIsPlaying(false)
     const handleError = (e: any) => {
       console.error('Audio error:', e)
-      setError('Failed to load audio file')
+      setAudioError(true)
+      setDuration(0)
+      setCurrentTime(0)
+    }
+    const handleCanPlay = () => {
+      setAudioError(false)
     }
 
     audio.addEventListener('timeupdate', handleTimeUpdate)
     audio.addEventListener('loadedmetadata', handleLoadedMetadata)
     audio.addEventListener('ended', handleEnded)
     audio.addEventListener('error', handleError)
+    audio.addEventListener('canplay', handleCanPlay)
 
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate)
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
       audio.removeEventListener('ended', handleEnded)
       audio.removeEventListener('error', handleError)
+      audio.removeEventListener('canplay', handleCanPlay)
     }
   }, [story?.audio_url])
 
@@ -161,7 +289,6 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
         throw new Error('No active session found. Please sign in again.')
       }
 
-      // Call the process-story edge function to generate feedback
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-story`, {
         method: 'POST',
         headers: {
@@ -186,7 +313,6 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
         throw new Error(result.error || 'Failed to generate feedback')
       }
 
-      // Refresh the story details to get the new feedback
       await fetchStoryDetails()
       
     } catch (err: any) {
@@ -242,7 +368,7 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
   }
 
   const togglePlayPause = () => {
-    if (!audioRef.current) return
+    if (!audioRef.current || audioError) return
 
     if (isPlaying) {
       audioRef.current.pause()
@@ -253,7 +379,7 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
   }
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!audioRef.current) return
+    if (!audioRef.current || audioError || !duration) return
     
     const newTime = (parseFloat(e.target.value) / 100) * duration
     audioRef.current.currentTime = newTime
@@ -261,7 +387,7 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
   }
 
   const toggleMute = () => {
-    if (!audioRef.current) return
+    if (!audioRef.current || audioError) return
     
     if (isMuted) {
       audioRef.current.volume = volume
@@ -273,7 +399,7 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
   }
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!audioRef.current) return
+    if (!audioRef.current || audioError) return
     
     const newVolume = parseFloat(e.target.value) / 100
     setVolume(newVolume)
@@ -282,6 +408,10 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
   }
 
   const formatTime = (seconds: number) => {
+    if (!seconds || isNaN(seconds) || !isFinite(seconds)) {
+      return '0:00'
+    }
+    
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, '0')}`
@@ -295,6 +425,25 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
       hour: '2-digit',
       minute: '2-digit'
     })
+  }
+
+  const formatStoryText = (text: string) => {
+    // Split into paragraphs and format for better readability
+    const paragraphs = text.split('\n').filter(p => p.trim())
+    
+    if (paragraphs.length <= 1) {
+      // If no line breaks, try to split by sentences for better formatting
+      const sentences = text.split(/(?<=[.!?])\s+/)
+      if (sentences.length > 3) {
+        const midPoint = Math.ceil(sentences.length / 2)
+        return [
+          sentences.slice(0, midPoint).join(' '),
+          sentences.slice(midPoint).join(' ')
+        ].join('\n\n')
+      }
+    }
+    
+    return paragraphs.join('\n\n')
   }
 
   const personalityLabels = {
@@ -331,7 +480,7 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
               size="sm"
               onClick={() => setShowDeleteConfirm(true)}
               className="text-red-600 hover:text-red-700"
-              disabled={deleting}
+              disabled={deleting || loading}
             >
               <Trash2 className="w-4 h-4 mr-2" />
               Delete
@@ -344,15 +493,6 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
 
         {/* Content */}
         <div className="p-6 space-y-6">
-          {loading && (
-            <div className="flex items-center justify-center py-12">
-              <div className="flex items-center gap-3">
-                <Loader2 className="w-6 h-6 animate-spin" />
-                <span>Loading story details...</span>
-              </div>
-            </div>
-          )}
-
           {error && (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
@@ -360,7 +500,14 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
             </Alert>
           )}
 
-          {story && (
+          {loading ? (
+            <>
+              <StoryHeaderSkeleton />
+              <StorySkeleton />
+              <AudioSkeleton />
+              <FeedbackSkeleton />
+            </>
+          ) : story ? (
             <>
               {/* Story Header */}
               <div className="space-y-4">
@@ -432,16 +579,25 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
                 </Card>
               </div>
 
-              {/* Story Prompt */}
+              {/* Story Content */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Story Prompt</CardTitle>
-                  <CardDescription>The original prompt that inspired this story</CardDescription>
+                  <CardTitle className="flex items-center gap-2">
+                    <BookOpen className="w-5 h-5" />
+                    Story
+                  </CardTitle>
+                  <CardDescription>The story content that was recorded</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm leading-relaxed bg-gray-50 p-4 rounded-lg">
-                    {story.prompt}
-                  </p>
+                  <div className="bg-gray-50 p-6 rounded-lg">
+                    <div className="prose prose-sm max-w-none">
+                      {formatStoryText(story.prompt).split('\n\n').map((paragraph, index) => (
+                        <p key={index} className="text-sm leading-relaxed mb-4 last:mb-0">
+                          {paragraph}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -463,62 +619,74 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
                       className="hidden"
                     />
                     
-                    <div className="space-y-4">
-                      {/* Main Controls */}
-                      <div className="flex items-center gap-4">
-                        <Button
-                          onClick={togglePlayPause}
-                          size="lg"
-                          className="flex items-center gap-2 min-w-[120px]"
-                        >
-                          {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                          {isPlaying ? 'Pause' : 'Play'}
-                        </Button>
-                        
-                        <div className="flex-1 space-y-2">
-                          {/* Progress Bar */}
+                    {audioError ? (
+                      <div className="text-center py-8">
+                        <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-500 opacity-50" />
+                        <p className="text-muted-foreground">Unable to load audio file</p>
+                        <p className="text-sm text-muted-foreground mt-2">The audio file may be corrupted or unavailable</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* Main Controls */}
+                        <div className="flex items-center gap-4">
+                          <Button
+                            onClick={togglePlayPause}
+                            size="lg"
+                            className="flex items-center gap-2 min-w-[120px]"
+                            disabled={audioError}
+                          >
+                            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                            {isPlaying ? 'Pause' : 'Play'}
+                          </Button>
+                          
+                          <div className="flex-1 space-y-2">
+                            {/* Progress Bar */}
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={duration > 0 ? (currentTime / duration) * 100 : 0}
+                              onChange={handleSeek}
+                              disabled={audioError || !duration}
+                              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                            />
+                            
+                            {/* Time Display */}
+                            <div className="flex justify-between text-sm text-muted-foreground">
+                              <span>{formatTime(currentTime)}</span>
+                              <span>{formatTime(duration || story.duration_seconds)}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Volume Controls */}
+                        <div className="flex items-center gap-3">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={toggleMute}
+                            disabled={audioError}
+                            className="flex items-center gap-1"
+                          >
+                            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                          </Button>
+                          
                           <input
                             type="range"
                             min="0"
                             max="100"
-                            value={duration > 0 ? (currentTime / duration) * 100 : 0}
-                            onChange={handleSeek}
-                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                            value={isMuted ? 0 : volume * 100}
+                            onChange={handleVolumeChange}
+                            disabled={audioError}
+                            className="w-24 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                           />
                           
-                          {/* Time Display */}
-                          <div className="flex justify-between text-sm text-muted-foreground">
-                            <span>{formatTime(currentTime)}</span>
-                            <span>{formatTime(duration || story.duration_seconds)}</span>
-                          </div>
+                          <span className="text-xs text-muted-foreground w-8">
+                            {Math.round((isMuted ? 0 : volume) * 100)}%
+                          </span>
                         </div>
                       </div>
-
-                      {/* Volume Controls */}
-                      <div className="flex items-center gap-3">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={toggleMute}
-                          className="flex items-center gap-1"
-                        >
-                          {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                        </Button>
-                        
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={isMuted ? 0 : volume * 100}
-                          onChange={handleVolumeChange}
-                          className="w-24 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                        />
-                        
-                        <span className="text-xs text-muted-foreground w-8">
-                          {Math.round((isMuted ? 0 : volume) * 100)}%
-                        </span>
-                      </div>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
               )}
@@ -678,7 +846,7 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
                 </Card>
               )}
             </>
-          )}
+          ) : null}
         </div>
 
         {/* Delete Confirmation Modal */}
