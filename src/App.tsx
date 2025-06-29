@@ -41,7 +41,7 @@ export default function App() {
     }
   }, [authLoading, user])
 
-  // Watch for story completion via real-time updates
+  // Enhanced story completion tracking with better audio URL handling
   useEffect(() => {
     if (processingStoryId && stories.length > 0) {
       // Find the processing story
@@ -59,14 +59,31 @@ export default function App() {
       }
       
       if (processingStory?.processing_status === 'completed') {
+        // Enhanced logging for audio URL debugging
+        console.log('🎵 Story completed, checking audio URL:', {
+          storyId: processingStory.id,
+          title: processingStory.title,
+          audioUrl: processingStory.audio_url,
+          hasAudioUrl: !!processingStory.audio_url,
+          audioUrlValid: processingStory.audio_url && processingStory.audio_url !== 'placeholder-url',
+          hasFeedback: !!(processingStory.story_feedback && processingStory.story_feedback.length > 0),
+          createdAt: processingStory.created_at
+        })
+
         // Check if we have feedback
         if (processingStory.story_feedback && processingStory.story_feedback.length > 0) {
+          // Ensure we have a valid audio URL
+          if (!processingStory.audio_url || processingStory.audio_url === 'placeholder-url') {
+            console.warn('⚠️ Story completed but audio URL is missing or invalid')
+          }
+
           setCurrentStory(processingStory)
           setCurrentView('feedback')
           setProcessingStoryId(null)
           refreshStats()
         }
       } else if (processingStory?.processing_status === 'failed') {
+        console.error('❌ Story processing failed for story:', processingStory.id)
         alert('Story processing failed. Please try again.')
         setProcessingStoryId(null)
         setCurrentView('record')
@@ -80,17 +97,53 @@ export default function App() {
       return
     }
     
+    console.log('🎵 Story completion initiated:', {
+      genre: storyData.genre,
+      duration: storyData.duration,
+      audioBlobSize: storyData.audioBlob?.size,
+      audioBlobType: storyData.audioBlob?.type,
+      feedbackPersonality: storyData.feedbackPersonality
+    })
+    
     if (!isConfigured()) {
-      // In demo mode, just show mock feedback
+      // In demo mode, just show mock feedback with proper audio URL
+      const audioUrl = URL.createObjectURL(storyData.audioBlob)
+      console.log('🎵 Demo mode - created blob URL:', audioUrl)
+      
       const mockStory = {
+        id: 'demo-' + Date.now(),
         title: generateStoryTitle(storyData.genre),
         genre: storyData.genre,
-        duration: storyData.duration,
+        duration_seconds: storyData.duration,
         transcript: generateMockTranscript(storyData.prompt, storyData.genre),
-        feedback: generateMockFeedback(storyData.feedbackPersonality),
-        feedbackPersonality: storyData.feedbackPersonality,
-        audioUrl: URL.createObjectURL(storyData.audioBlob),
-        createdAt: new Date().toISOString()
+        feedback_personality: storyData.feedbackPersonality,
+        audio_url: audioUrl,
+        created_at: new Date().toISOString(),
+        processing_status: 'completed',
+        story_feedback: [{
+          id: 'demo-feedback',
+          feedback_text: generateMockFeedback(storyData.feedbackPersonality),
+          strengths: [
+            "Excellent opening that immediately draws the reader in",
+            "Strong use of descriptive language and vivid imagery",
+            "Good pacing and natural story flow",
+            "Creative and engaging narrative voice"
+          ],
+          improvements: [
+            "Consider adding more dialogue to bring characters to life",
+            "Try incorporating more sensory details beyond visual",
+            "Experiment with varying sentence length for better rhythm",
+            "Add more emotional depth to character interactions"
+          ],
+          next_steps: [
+            "Practice recording stories in different genres to expand your range",
+            "Try telling the same story from different character perspectives",
+            "Experiment with different narrative techniques like flashbacks",
+            "Record shorter practice sessions focusing on specific skills"
+          ],
+          overall_score: 8,
+          created_at: new Date().toISOString()
+        }]
       }
       
       setCurrentStory(mockStory)
@@ -99,6 +152,7 @@ export default function App() {
     }
     
     try {
+      console.log('🎵 Creating story with real backend...')
       createStory({
         title: generateStoryTitle(storyData.genre),
         genre: storyData.genre,
@@ -107,9 +161,12 @@ export default function App() {
         feedback_personality: storyData.feedbackPersonality,
         audioBlob: storyData.audioBlob
       })
+
+      // The real-time subscription will handle the completion automatically
+      console.log('🎵 Story creation initiated, waiting for completion...')
       
     } catch (error) {
-      console.error('Error processing story:', error)
+      console.error('❌ Error processing story:', error)
       alert('There was an error processing your story. Please try again.')
       setProcessingStoryId(null)
     }
@@ -405,7 +462,8 @@ export default function App() {
                   feedback: currentStory.story_feedback?.[0]?.feedback_text || currentStory.feedback || '',
                   feedbackPersonality: currentStory.feedback_personality || currentStory.feedbackPersonality,
                   audioUrl: currentStory.audio_url || currentStory.audioUrl,
-                  createdAt: currentStory.created_at || currentStory.createdAt
+                  createdAt: currentStory.created_at || currentStory.createdAt,
+                  story_feedback: currentStory.story_feedback
                 }}
                 onNewStory={() => {
                   setCurrentView('record')

@@ -5,7 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/src
 import { Button } from '@/src/components/ui/button'
 import { Badge } from '@/src/components/ui/badge'
 import { Separator } from '@/src/components/ui/separator'
-import { MessageSquare, Star, TrendingUp, Lightbulb, ArrowRight, Volume2, VolumeX, Play, Pause } from 'lucide-react'
+import { Alert, AlertDescription } from '@/src/components/ui/alert'
+import { MessageSquare, Star, TrendingUp, Lightbulb, ArrowRight, Volume2, VolumeX, Play, Pause, AlertTriangle, RefreshCw } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 interface StoryFeedbackProps {
@@ -37,41 +38,212 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
   const [duration, setDuration] = useState(0)
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
+  const [audioError, setAudioError] = useState<string | null>(null)
+  const [audioLoading, setAudioLoading] = useState(true)
+  const [debugInfo, setDebugInfo] = useState<any>({})
   
   const audioRef = useRef<HTMLAudioElement>(null)
 
+  // Debug: Log audio URL and story data when component mounts or updates
+  useEffect(() => {
+    console.log('🎵 StoryFeedback - Audio Debug Info:', {
+      audioUrl: storyData.audioUrl,
+      storyTitle: storyData.title,
+      storyCreatedAt: storyData.createdAt,
+      hasAudioUrl: !!storyData.audioUrl,
+      audioUrlLength: storyData.audioUrl?.length,
+      audioUrlDomain: storyData.audioUrl ? new URL(storyData.audioUrl).hostname : 'N/A'
+    })
+
+    setDebugInfo({
+      audioUrl: storyData.audioUrl,
+      storyTitle: storyData.title,
+      timestamp: new Date().toISOString(),
+      hasAudioUrl: !!storyData.audioUrl
+    })
+
+    // Reset audio states when story data changes
+    setAudioError(null)
+    setAudioLoading(true)
+    setIsPlaying(false)
+    setCurrentTime(0)
+    setDuration(0)
+  }, [storyData.audioUrl, storyData.title])
+
+  // Enhanced audio event handlers with detailed logging
   useEffect(() => {
     const audio = audioRef.current
-    if (!audio) return
+    if (!audio || !storyData.audioUrl) {
+      setAudioLoading(false)
+      return
+    }
 
-    const handleTimeUpdate = () => setCurrentTime(audio.currentTime)
-    const handleLoadedMetadata = () => setDuration(audio.duration)
-    const handleEnded = () => setIsPlaying(false)
+    console.log('🎵 Setting up audio event listeners for:', storyData.audioUrl)
 
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime || 0)
+    }
+
+    const handleLoadedMetadata = () => {
+      console.log('🎵 Audio metadata loaded:', {
+        duration: audio.duration,
+        readyState: audio.readyState,
+        networkState: audio.networkState
+      })
+      setDuration(audio.duration || 0)
+      setAudioError(null)
+      setAudioLoading(false)
+    }
+
+    const handleCanPlay = () => {
+      console.log('🎵 Audio can play:', {
+        duration: audio.duration,
+        readyState: audio.readyState
+      })
+      setAudioError(null)
+      setAudioLoading(false)
+    }
+
+    const handleLoadStart = () => {
+      console.log('🎵 Audio load started')
+      setAudioLoading(true)
+      setAudioError(null)
+    }
+
+    const handleLoadedData = () => {
+      console.log('🎵 Audio data loaded')
+      setAudioLoading(false)
+    }
+
+    const handleEnded = () => {
+      console.log('🎵 Audio playback ended')
+      setIsPlaying(false)
+    }
+
+    const handleError = (e: any) => {
+      console.error('🎵 Audio error:', {
+        error: e,
+        audioError: audio.error,
+        networkState: audio.networkState,
+        readyState: audio.readyState,
+        src: audio.src
+      })
+      
+      let errorMessage = 'Unknown audio error'
+      if (audio.error) {
+        switch (audio.error.code) {
+          case MediaError.MEDIA_ERR_ABORTED:
+            errorMessage = 'Audio loading was aborted'
+            break
+          case MediaError.MEDIA_ERR_NETWORK:
+            errorMessage = 'Network error while loading audio'
+            break
+          case MediaError.MEDIA_ERR_DECODE:
+            errorMessage = 'Audio file is corrupted or unsupported'
+            break
+          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            errorMessage = 'Audio format not supported'
+            break
+        }
+      }
+      
+      setAudioError(errorMessage)
+      setAudioLoading(false)
+      setDuration(0)
+      setCurrentTime(0)
+    }
+
+    const handleWaiting = () => {
+      console.log('🎵 Audio waiting for data')
+      setAudioLoading(true)
+    }
+
+    const handlePlaying = () => {
+      console.log('🎵 Audio started playing')
+      setAudioLoading(false)
+    }
+
+    // Add all event listeners
     audio.addEventListener('timeupdate', handleTimeUpdate)
     audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+    audio.addEventListener('canplay', handleCanPlay)
+    audio.addEventListener('loadstart', handleLoadStart)
+    audio.addEventListener('loadeddata', handleLoadedData)
     audio.addEventListener('ended', handleEnded)
+    audio.addEventListener('error', handleError)
+    audio.addEventListener('waiting', handleWaiting)
+    audio.addEventListener('playing', handlePlaying)
+
+    // Force load the audio
+    audio.load()
 
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate)
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.removeEventListener('canplay', handleCanPlay)
+      audio.removeEventListener('loadstart', handleLoadStart)
+      audio.removeEventListener('loadeddata', handleLoadedData)
       audio.removeEventListener('ended', handleEnded)
+      audio.removeEventListener('error', handleError)
+      audio.removeEventListener('waiting', handleWaiting)
+      audio.removeEventListener('playing', handlePlaying)
     }
-  }, [])
+  }, [storyData.audioUrl])
 
-  const togglePlayPause = () => {
-    if (!audioRef.current) return
+  const testAudioUrl = async () => {
+    if (!storyData.audioUrl) return
 
-    if (isPlaying) {
-      audioRef.current.pause()
-    } else {
-      audioRef.current.play()
+    console.log('🔍 Testing audio URL accessibility:', storyData.audioUrl)
+    
+    try {
+      const response = await fetch(storyData.audioUrl, { method: 'HEAD' })
+      console.log('🔍 Audio URL test result:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        url: storyData.audioUrl
+      })
+      
+      if (!response.ok) {
+        setAudioError(`Audio file not accessible: ${response.status} ${response.statusText}`)
+      }
+    } catch (error) {
+      console.error('🔍 Audio URL test failed:', error)
+      setAudioError(`Network error: ${error.message}`)
     }
-    setIsPlaying(!isPlaying)
+  }
+
+  const togglePlayPause = async () => {
+    if (!audioRef.current || audioError) return
+
+    console.log('🎵 Toggle play/pause:', { isPlaying, readyState: audioRef.current.readyState })
+
+    try {
+      if (isPlaying) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      } else {
+        // Ensure audio is loaded before playing
+        if (audioRef.current.readyState < 2) {
+          console.log('🎵 Audio not ready, loading...')
+          setAudioLoading(true)
+          await audioRef.current.load()
+        }
+        
+        const playPromise = audioRef.current.play()
+        if (playPromise !== undefined) {
+          await playPromise
+          setIsPlaying(true)
+        }
+      }
+    } catch (error) {
+      console.error('🎵 Play/pause error:', error)
+      setAudioError(`Playback error: ${error.message}`)
+    }
   }
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!audioRef.current) return
+    if (!audioRef.current || audioError || !duration) return
     
     const newTime = (parseFloat(e.target.value) / 100) * duration
     audioRef.current.currentTime = newTime
@@ -79,7 +251,7 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
   }
 
   const toggleMute = () => {
-    if (!audioRef.current) return
+    if (!audioRef.current || audioError) return
     
     if (isMuted) {
       audioRef.current.volume = volume
@@ -91,7 +263,7 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
   }
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!audioRef.current) return
+    if (!audioRef.current || audioError) return
     
     const newVolume = parseFloat(e.target.value) / 100
     setVolume(newVolume)
@@ -99,7 +271,20 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
     setIsMuted(newVolume === 0)
   }
 
+  const retryAudioLoad = () => {
+    if (!audioRef.current || !storyData.audioUrl) return
+    
+    console.log('🔄 Retrying audio load')
+    setAudioError(null)
+    setAudioLoading(true)
+    audioRef.current.load()
+  }
+
   const formatDuration = (seconds: number) => {
+    if (!seconds || isNaN(seconds) || !isFinite(seconds)) {
+      return '0:00'
+    }
+    
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, '0')}`
@@ -163,7 +348,29 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
         </div>
       </motion.div>
 
-      {/* Audio Player */}
+      {/* Debug Information (only in development) */}
+      {process.env.NODE_ENV === 'development' && (
+        <Card className="border-orange-200 bg-orange-50">
+          <CardHeader>
+            <CardTitle className="text-sm text-orange-800">🔧 Audio Debug Info</CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-orange-700">
+            <pre className="whitespace-pre-wrap overflow-x-auto">
+              {JSON.stringify(debugInfo, null, 2)}
+            </pre>
+            <Button 
+              onClick={testAudioUrl} 
+              size="sm" 
+              variant="outline" 
+              className="mt-2"
+            >
+              Test Audio URL
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Enhanced Audio Player */}
       {storyData.audioUrl && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -184,7 +391,27 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
                 src={storyData.audioUrl}
                 preload="metadata"
                 className="hidden"
+                crossOrigin="anonymous"
               />
+              
+              {/* Audio Error Display */}
+              {audioError && (
+                <Alert variant="destructive" className="mb-4">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription className="flex items-center justify-between">
+                    <span>{audioError}</span>
+                    <Button 
+                      onClick={retryAudioLoad} 
+                      size="sm" 
+                      variant="outline"
+                      className="ml-2"
+                    >
+                      <RefreshCw className="w-4 h-4 mr-1" />
+                      Retry
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
               
               <div className="space-y-4">
                 {/* Main Controls */}
@@ -192,10 +419,17 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
                   <Button
                     onClick={togglePlayPause}
                     size="lg"
+                    disabled={audioError || audioLoading}
                     className="flex items-center gap-2 min-w-[120px]"
                   >
-                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                    {isPlaying ? 'Pause' : 'Play'}
+                    {audioLoading ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : isPlaying ? (
+                      <Pause className="w-4 h-4" />
+                    ) : (
+                      <Play className="w-4 h-4" />
+                    )}
+                    {audioLoading ? 'Loading...' : isPlaying ? 'Pause' : 'Play'}
                   </Button>
                   
                   <div className="flex-1 space-y-2">
@@ -206,6 +440,7 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
                       max="100"
                       value={duration > 0 ? (currentTime / duration) * 100 : 0}
                       onChange={handleSeek}
+                      disabled={audioError || audioLoading || !duration}
                       className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
                     />
                     
@@ -223,6 +458,7 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
                     variant="ghost"
                     size="sm"
                     onClick={toggleMute}
+                    disabled={audioError}
                     className="flex items-center gap-1"
                   >
                     {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -234,6 +470,7 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
                     max="100"
                     value={isMuted ? 0 : volume * 100}
                     onChange={handleVolumeChange}
+                    disabled={audioError}
                     className="w-24 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                   />
                   
@@ -241,7 +478,32 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
                     {Math.round((isMuted ? 0 : volume) * 100)}%
                   </span>
                 </div>
+
+                {/* Audio Status Info */}
+                <div className="text-xs text-muted-foreground">
+                  Status: {audioLoading ? 'Loading...' : audioError ? 'Error' : 'Ready'} | 
+                  URL: {storyData.audioUrl ? '✓ Present' : '✗ Missing'}
+                  {audioRef.current && (
+                    <> | Ready State: {audioRef.current.readyState}/4</>
+                  )}
+                </div>
               </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* No Audio Available */}
+      {!storyData.audioUrl && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <Card>
+            <CardContent className="text-center py-8">
+              <VolumeX className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p className="text-muted-foreground">No audio recording available for this story</p>
             </CardContent>
           </Card>
         </motion.div>
