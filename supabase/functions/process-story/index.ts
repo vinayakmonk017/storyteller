@@ -27,6 +27,8 @@ Deno.serve(async (req) => {
 
     const { storyId, audioUrl, feedbackPersonality }: ProcessStoryRequest = await req.json()
 
+    console.log('Processing story:', { storyId, audioUrl: audioUrl.substring(0, 100) + '...', feedbackPersonality })
+
     // Step 1: Update story status to processing
     const { error: updateError } = await supabaseClient
       .from('stories')
@@ -37,13 +39,53 @@ Deno.serve(async (req) => {
       throw updateError
     }
 
-    // Step 2: Transcribe audio using OpenAI Whisper
-    const transcript = await transcribeAudio(audioUrl)
+    // Step 2: Validate and download audio
+    console.log('Attempting to download audio from:', audioUrl)
+    
+    // First, validate the URL format
+    if (!audioUrl || !audioUrl.startsWith('http')) {
+      throw new Error(`Invalid audio URL format: ${audioUrl}`)
+    }
 
-    // Step 3: Generate AI feedback using OpenAI GPT
+    // Try to download the audio file with better error handling
+    let audioResponse
+    try {
+      audioResponse = await fetch(audioUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Supabase-Edge-Function/1.0'
+        }
+      })
+    } catch (fetchError) {
+      console.error('Network error downloading audio:', fetchError)
+      throw new Error(`Network error downloading audio: ${fetchError.message}`)
+    }
+
+    if (!audioResponse.ok) {
+      console.error('Audio download failed:', {
+        status: audioResponse.status,
+        statusText: audioResponse.statusText,
+        url: audioUrl
+      })
+      
+      // Try to get more details about the error
+      let errorDetails = ''
+      try {
+        errorDetails = await audioResponse.text()
+      } catch (e) {
+        errorDetails = 'Could not read error response'
+      }
+      
+      throw new Error(`Failed to download audio: ${audioResponse.status} ${audioResponse.statusText}. Details: ${errorDetails}`)
+    }
+
+    // Step 3: Transcribe audio using OpenAI Whisper
+    const transcript = await transcribeAudio(audioResponse)
+
+    // Step 4: Generate AI feedback using OpenAI GPT
     const feedback = await generateFeedback(transcript, feedbackPersonality)
 
-    // Step 4: Save feedback to database
+    // Step 5: Save feedback to database
     const { error: feedbackError } = await supabaseClient
       .from('story_feedback')
       .insert({
@@ -59,7 +101,7 @@ Deno.serve(async (req) => {
       throw feedbackError
     }
 
-    // Step 5: Update story with transcript and completion status
+    // Step 6: Update story with transcript and completion status
     const { error: finalUpdateError } = await supabaseClient
       .from('stories')
       .update({
@@ -73,7 +115,7 @@ Deno.serve(async (req) => {
       throw finalUpdateError
     }
 
-    // Step 6: Check for new achievements
+    // Step 7: Check for new achievements
     await checkAchievements(supabaseClient, storyId)
 
     return new Response(
@@ -100,18 +142,21 @@ Deno.serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       )
       
-      const { storyId } = await req.json()
+      const requestBody = await req.clone().json()
+      const { storyId } = requestBody
       
-      const { error: failedUpdateError } = await supabaseClient
-        .from('stories')
-        .update({ 
-          processing_status: 'failed',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', storyId)
-        
-      if (failedUpdateError) {
-        console.error('Error updating story to failed status:', failedUpdateError)
+      if (storyId) {
+        const { error: failedUpdateError } = await supabaseClient
+          .from('stories')
+          .update({ 
+            processing_status: 'failed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', storyId)
+          
+        if (failedUpdateError) {
+          console.error('Error updating story to failed status:', failedUpdateError)
+        }
       }
     } catch (updateError) {
       console.error('Error updating story to failed status:', updateError)
@@ -131,7 +176,7 @@ Deno.serve(async (req) => {
   }
 })
 
-async function transcribeAudio(audioUrl: string): Promise<string> {
+async function transcribeAudio(audioResponse: Response): Promise<string> {
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
   
   if (!openaiApiKey) {
@@ -139,13 +184,13 @@ async function transcribeAudio(audioUrl: string): Promise<string> {
   }
 
   try {
-    // Download the audio file
-    const audioResponse = await fetch(audioUrl)
-    if (!audioResponse.ok) {
-      throw new Error(`Failed to download audio: ${audioResponse.status}`)
-    }
-    
+    // Get the audio blob from the response
     const audioBlob = await audioResponse.blob()
+    console.log('Audio blob size:', audioBlob.size, 'type:', audioBlob.type)
+
+    if (audioBlob.size === 0) {
+      throw new Error('Audio file is empty')
+    }
 
     // Create form data for OpenAI Whisper API
     const formData = new FormData()
@@ -153,6 +198,8 @@ async function transcribeAudio(audioUrl: string): Promise<string> {
     formData.append('model', 'whisper-1')
     formData.append('language', 'en')
     formData.append('response_format', 'text')
+    
+    console.log('Sending audio to OpenAI Whisper API...')
     
     // Call OpenAI Whisper API
     const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -165,10 +212,12 @@ async function transcribeAudio(audioUrl: string): Promise<string> {
 
     if (!response.ok) {
       const errorText = await response.text()
+      console.error('OpenAI Whisper API error:', response.status, errorText)
       throw new Error(`OpenAI Whisper API error: ${response.status} ${errorText}`)
     }
 
     const transcript = await response.text()
+    console.log('Transcription completed, length:', transcript.length)
     return transcript.trim()
     
   } catch (error) {
@@ -218,6 +267,8 @@ Please provide your response in the following JSON format:
 
 The score should be between 1-10 based on storytelling quality, engagement, clarity, and creativity. Focus on being constructive and helpful while maintaining your personality style. Provide specific, actionable feedback that will help the storyteller improve their skills.`
 
+    console.log('Generating feedback with OpenAI...')
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -238,11 +289,14 @@ The score should be between 1-10 based on storytelling quality, engagement, clar
 
     if (!response.ok) {
       const errorText = await response.text()
+      console.error('OpenAI GPT API error:', response.status, errorText)
       throw new Error(`OpenAI GPT API error: ${response.status} ${errorText}`)
     }
 
     const data = await response.json()
     const feedbackContent = data.choices[0].message.content
+    
+    console.log('Feedback generated successfully')
     
     try {
       const parsedFeedback = JSON.parse(feedbackContent)

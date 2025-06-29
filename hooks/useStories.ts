@@ -144,7 +144,13 @@ export function useStories() {
         throw new Error(`Failed to upload audio: ${uploadError.message}`)
       }
 
+      // Get the public URL for the uploaded file
       const audioUrl = storage.getAudioUrl(fileName)
+      
+      // Validate that the URL is accessible
+      if (!audioUrl || audioUrl === 'placeholder-url') {
+        throw new Error('Failed to generate valid audio URL')
+      }
 
       // Create story record
       const { data: story, error: storyError } = await db.createStory({
@@ -178,10 +184,22 @@ export function useStories() {
         })
 
         if (!response.ok) {
-          console.error('Edge function error:', await response.text())
+          const errorText = await response.text()
+          console.error('Edge function error:', errorText)
+          throw new Error(`Edge function failed: ${response.status} ${errorText}`)
+        }
+
+        const result = await response.json()
+        console.log('Edge function result:', result)
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Processing failed')
         }
       } catch (processingError) {
         console.error('Processing initiation error:', processingError)
+        // Update story status to failed
+        await db.updateStory(story.id, { processing_status: 'failed' })
+        throw processingError
       }
 
       return story

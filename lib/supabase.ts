@@ -424,11 +424,37 @@ export const storage = {
       return 'placeholder-url'
     }
 
-    const { data } = supabase.storage
-      .from('audio_recordings')
-      .getPublicUrl(fileName)
-    console.log('Generated audio URL for:', fileName)
-    return data.publicUrl
+    try {
+      const { data } = supabase.storage
+        .from('audio_recordings')
+        .getPublicUrl(fileName)
+      
+      console.log('Generated audio URL for:', fileName, 'URL:', data.publicUrl)
+      return data.publicUrl
+    } catch (error) {
+      console.error('Error generating audio URL:', error)
+      return 'placeholder-url'
+    }
+  },
+
+  // Get a signed URL for private access (alternative to public URL)
+  getSignedAudioUrl: async (fileName: string, expiresIn = 3600) => {
+    if (!isSupabaseConfigured()) {
+      return { data: null, error: new Error('Supabase not configured') }
+    }
+
+    try {
+      console.log('Getting signed URL for:', fileName)
+      const { data, error } = await supabase.storage
+        .from('audio_recordings')
+        .createSignedUrl(fileName, expiresIn)
+      
+      console.log('Signed URL result:', { data: !!data, error })
+      return { data, error }
+    } catch (error) {
+      console.error('getSignedAudioUrl error:', error)
+      return { data: null, error }
+    }
   },
 
   deleteAudio: async (fileName: string) => {
