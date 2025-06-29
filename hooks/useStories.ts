@@ -41,12 +41,15 @@ export function useStories() {
           filter: `user_id=eq.${user.id}`
         },
         (payload) => {
-          console.log('Real-time story update received:', payload)
+          console.log('🔄 Real-time story update received:', payload)
           
           const updatedStory = payload.new as Story
-          console.log('Story status:', updatedStory.processing_status)
-          console.log('Processing story ID:', processingStoryId)
-          console.log('Updated story ID:', updatedStory.id)
+          console.log('📊 Story details:', {
+            id: updatedStory.id,
+            status: updatedStory.processing_status,
+            title: updatedStory.title,
+            processingStoryId
+          })
           
           // Update the query cache
           queryClient.setQueryData(['stories', user.id], (oldStories: any[]) => {
@@ -58,20 +61,39 @@ export function useStories() {
             )
           })
           
-          // CRITICAL FIX: Clear processing state immediately when story is completed
-          if (updatedStory.processing_status === 'completed' && processingStoryId === updatedStory.id) {
-            console.log('✅ Story processing completed, clearing loading state')
+          // Check if this is the story we're waiting for
+          if (updatedStory.processing_status === 'completed') {
+            console.log('✅ Story completed:', updatedStory.id)
             
-            // Load feedback first
-            loadStoryFeedback(updatedStory.id).then(() => {
-              // Clear processing state after feedback is loaded
-              setProcessingStoryId(null)
-              console.log('🎉 Processing state cleared, should show feedback now')
-            })
+            // Check if this is our processing story OR if we should switch to this completed story
+            if (processingStoryId === updatedStory.id || 
+                (processingStoryId && !stories.find(s => s.id === processingStoryId && s.processing_status === 'completed'))) {
+              
+              console.log('🎯 This is our target story, loading feedback...')
+              loadStoryFeedback(updatedStory.id)
+            }
           } else if (updatedStory.processing_status === 'failed' && processingStoryId === updatedStory.id) {
-            console.log('❌ Story processing failed, clearing loading state')
+            console.log('❌ Story processing failed')
             setProcessingStoryId(null)
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'story_feedback',
+          filter: `story_id=eq.${processingStoryId}`
+        },
+        (payload) => {
+          console.log('📋 Feedback inserted for story:', payload.new)
+          
+          // Refresh stories to get the feedback
+          queryClient.invalidateQueries({ queryKey: ['stories', user.id] })
+          
+          // Clear processing state
+          setProcessingStoryId(null)
         }
       )
       .subscribe()
@@ -107,7 +129,11 @@ export function useStories() {
         )
       })
       
-      console.log('✅ Feedback loaded and cache updated')
+      if (feedback && feedback.length > 0) {
+        console.log('✅ Feedback loaded, clearing processing state')
+        setProcessingStoryId(null)
+      }
+      
     } catch (error) {
       console.error('💥 Error loading story feedback:', error)
     }
@@ -160,7 +186,7 @@ export function useStories() {
         throw new Error(`Failed to create story: ${storyError.message}`)
       }
 
-      console.log('📝 Story created, triggering processing...')
+      console.log('📝 Story created with ID:', story.id)
 
       // Trigger processing via edge function
       try {
@@ -179,20 +205,17 @@ export function useStories() {
 
         if (!response.ok) {
           console.error('Edge function error:', await response.text())
-          // Don't throw here, let the real-time subscription handle failures
         } else {
           console.log('✅ Processing initiated successfully')
         }
       } catch (processingError) {
         console.error('Processing initiation error:', processingError)
-        // Don't throw here, let the real-time subscription handle failures
       }
 
       return story
     },
     onSuccess: (newStory) => {
-      console.log({newStory})
-      console.log('🎯 Story creation mutation succeeded, setting processing ID:', newStory.id)
+      console.log('🎯 Story creation succeeded, setting processing ID:', newStory.id)
       
       // Add the new story to the cache
       queryClient.setQueryData(['stories', user?.id], (oldStories: any[]) => {
@@ -207,7 +230,6 @@ export function useStories() {
     },
     onError: (error) => {
       console.error('💥 Error creating story:', error)
-      // Clear processing state on error
       setProcessingStoryId(null)
     }
   })
@@ -231,19 +253,54 @@ export function useStories() {
     }
   }
 
-  // Add timeout fallback to prevent infinite loading
+  // IMPROVED: Better logic to find the completed story
+  useEffect(() => {
+    if (processingStoryId && stories.length > 0) {
+      console.log('🔍 Checking for completed stories...', {
+        processingStoryId,
+        stories: stories.map(s => ({ id: s.id, status: s.processing_status, title: s.title }))
+      })
+
+      // First, try to find the exact story we're tracking
+      let targetStory = stories.find(s => s.id === processingStoryId)
+      
+      // If the tracked story doesn't exist or is still pending, 
+      // look for any completed story with the same title (in case of duplicate creation)
+      if (!targetStory || targetStory.processing_status === 'pending') {
+        const completedStories = stories.filter(s => s.processing_status === 'completed')
+        if (completedStories.length > 0) {
+          // Get the most recent completed story
+          targetStory = completedStories.sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          )[0]
+          
+          console.log('🔄 Switching to most recent completed story:', targetStory.id)
+        }
+      }
+
+      if (targetStory?.processing_status === 'completed') {
+        console.log('✅ Found completed story, checking for feedback...')
+        
+        if (targetStory.story_feedback && targetStory.story_feedback.length > 0) {
+          console.log('📋 Story has feedback, clearing processing state')
+          setProcessingStoryId(null)
+        } else {
+          console.log('⏳ Story completed but no feedback yet, loading...')
+          loadStoryFeedback(targetStory.id)
+        }
+      }
+    }
+  }, [stories, processingStoryId])
+
+  // Add timeout fallback
   useEffect(() => {
     if (processingStoryId) {
-      console.log('⏰ Setting 5-minute timeout for processing story:', processingStoryId)
-      
       const timeout = setTimeout(() => {
         console.warn('⚠️ Processing timeout reached, clearing loading state')
         setProcessingStoryId(null)
       }, 5 * 60 * 1000) // 5 minutes
 
-      return () => {
-        clearTimeout(timeout)
-      }
+      return () => clearTimeout(timeout)
     }
   }, [processingStoryId])
 

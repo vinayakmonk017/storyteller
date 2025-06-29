@@ -41,7 +41,7 @@ export default function App() {
     }
   }, [authLoading, user])
 
-  // IMPROVED: Watch for story completion with better debugging
+  // IMPROVED: Better story completion detection
   useEffect(() => {
     console.log('🔍 App.tsx: Checking for completed stories', {
       processingStoryId,
@@ -50,7 +50,21 @@ export default function App() {
     })
 
     if (processingStoryId && stories.length > 0) {
-      const processingStory = stories.find(s => s.id === processingStoryId)
+      // Find the processing story
+      let processingStory = stories.find(s => s.id === processingStoryId)
+      
+      // If the tracked story is still pending, look for a completed story with same title
+      if (!processingStory || processingStory.processing_status === 'pending') {
+        const completedStories = stories.filter(s => s.processing_status === 'completed')
+        if (completedStories.length > 0) {
+          // Use the most recent completed story
+          processingStory = completedStories.sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          )[0]
+          
+          console.log('🔄 Switching to completed story:', processingStory.id)
+        }
+      }
       
       console.log('📖 Found processing story:', {
         story: processingStory,
@@ -59,9 +73,9 @@ export default function App() {
       })
       
       if (processingStory?.processing_status === 'completed') {
-        console.log('✅ Story processing completed, switching to feedback view')
+        console.log('✅ Story processing completed')
         
-        // Ensure we have the story with feedback
+        // Check if we have feedback
         if (processingStory.story_feedback && processingStory.story_feedback.length > 0) {
           console.log('📋 Story has feedback, showing feedback screen')
           setCurrentStory(processingStory)
@@ -70,7 +84,7 @@ export default function App() {
           refreshStats()
         } else {
           console.log('⏳ Story completed but no feedback yet, waiting...')
-          // Don't clear processingStoryId yet, wait for feedback to load
+          // The useStories hook will handle loading feedback
         }
       } else if (processingStory?.processing_status === 'failed') {
         console.log('❌ Story processing failed')
@@ -240,7 +254,13 @@ export default function App() {
     )
   }
 
-  console.log({isCreatingStory,  processingID: !processingStoryId && currentView === 'feedback', currentView, currentStory})
+  console.log('🎯 App render state:', {
+    isCreatingStory,
+    processingStoryId,
+    currentView,
+    currentStory: !!currentStory,
+    storiesCount: stories.length
+  })
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-950 dark:to-blue-950">
