@@ -44,19 +44,8 @@ export default function App() {
   // Enhanced story completion tracking with better audio URL handling
   useEffect(() => {
     if (processingStoryId && stories.length > 0) {
-      // Find the processing story
-      let processingStory = stories.find(s => s.id === processingStoryId)
-      
-      // If the tracked story is still pending, look for a completed story with same title
-      if (!processingStory || processingStory.processing_status === 'pending') {
-        const completedStories = stories.filter(s => s.processing_status === 'completed')
-        if (completedStories.length > 0) {
-          // Use the most recent completed story
-          processingStory = completedStories.sort((a, b) => 
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          )[0]
-        }
-      }
+      // Find the exact story we're tracking
+      const processingStory = stories.find(s => s.id === processingStoryId)
       
       if (processingStory?.processing_status === 'completed') {
         // Enhanced logging for audio URL debugging
@@ -67,7 +56,8 @@ export default function App() {
           hasAudioUrl: !!processingStory.audio_url,
           audioUrlValid: processingStory.audio_url && processingStory.audio_url !== 'placeholder-url',
           hasFeedback: !!(processingStory.story_feedback && processingStory.story_feedback.length > 0),
-          createdAt: processingStory.created_at
+          createdAt: processingStory.created_at,
+          processingStoryId: processingStoryId
         })
 
         // Check if we have feedback
@@ -77,10 +67,20 @@ export default function App() {
             console.warn('⚠️ Story completed but audio URL is missing or invalid')
           }
 
-          setCurrentStory(processingStory)
-          setCurrentView('feedback')
-          setProcessingStoryId(null)
-          refreshStats()
+          // CRITICAL: Clear the current story first to prevent stale data
+          setCurrentStory(null)
+          
+          // Set a small delay to ensure state is cleared
+          setTimeout(() => {
+            setCurrentStory({
+              ...processingStory,
+              // Add a unique identifier to force re-render
+              _renderKey: `${processingStory.id}-${Date.now()}`
+            })
+            setCurrentView('feedback')
+            setProcessingStoryId(null)
+            refreshStats()
+          }, 100)
         }
       } else if (processingStory?.processing_status === 'failed') {
         console.error('❌ Story processing failed for story:', processingStory.id)
@@ -89,7 +89,7 @@ export default function App() {
         setCurrentView('record')
       }
     }
-  }, [stories, processingStoryId, setProcessingStoryId, refreshStats])
+  }, [processingStoryId, stories, refreshStats, setProcessingStoryId])
 
   const handleStoryComplete = async (storyData: any) => {
     if (!user) {
@@ -104,6 +104,9 @@ export default function App() {
       audioBlobType: storyData.audioBlob?.type,
       feedbackPersonality: storyData.feedbackPersonality
     })
+    
+    // CRITICAL: Clear any existing story data immediately
+    setCurrentStory(null)
     
     if (!isConfigured()) {
       // In demo mode, just show mock feedback with proper audio URL
@@ -143,7 +146,9 @@ export default function App() {
           ],
           overall_score: 8,
           created_at: new Date().toISOString()
-        }]
+        }],
+        // Add unique render key to force re-render
+        _renderKey: `demo-${Date.now()}`
       }
       
       setCurrentStory(mockStory)
@@ -220,6 +225,17 @@ export default function App() {
     await signOut()
     setShowAuthModal(true)
     setCurrentView('dashboard')
+    // Clear any story data on sign out
+    setCurrentStory(null)
+    setProcessingStoryId(null)
+  }
+
+  // Clear story data when switching views
+  const handleViewChange = (view: AppState) => {
+    if (view !== 'feedback') {
+      setCurrentStory(null)
+    }
+    setCurrentView(view)
   }
 
   // Show loading screen while auth is loading
@@ -309,7 +325,7 @@ export default function App() {
                 <Button
                   key={item.id}
                   variant={currentView === item.id ? "default" : "ghost"}
-                  onClick={() => setCurrentView(item.id as AppState)}
+                  onClick={() => handleViewChange(item.id as AppState)}
                   className="flex items-center gap-2"
                 >
                   <item.icon className="w-4 h-4" />
@@ -339,7 +355,7 @@ export default function App() {
             <Button
               key={item.id}
               variant={currentView === item.id ? "default" : "ghost"}
-              onClick={() => setCurrentView(item.id as AppState)}
+              onClick={() => handleViewChange(item.id as AppState)}
               className="flex-1 flex items-center gap-2 rounded-none"
             >
               <item.icon className="w-4 h-4" />
@@ -448,12 +464,13 @@ export default function App() {
 
           {!isCreatingStory && !processingStoryId && currentView === 'feedback' && currentStory && (
             <motion.div
-              key="feedback"
+              key={`feedback-${currentStory._renderKey || currentStory.id}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
             >
               <StoryFeedback
+                key={currentStory._renderKey || currentStory.id}
                 storyData={{
                   title: currentStory.title,
                   genre: currentStory.genre,

@@ -44,31 +44,42 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
   
   const audioRef = useRef<HTMLAudioElement>(null)
 
-  // Debug: Log audio URL and story data when component mounts or updates
+  // CRITICAL: Reset all audio states when story data changes
   useEffect(() => {
-    console.log('🎵 StoryFeedback - Audio Debug Info:', {
+    console.log('🎵 StoryFeedback - New story data received:', {
       audioUrl: storyData.audioUrl,
       storyTitle: storyData.title,
       storyCreatedAt: storyData.createdAt,
       hasAudioUrl: !!storyData.audioUrl,
       audioUrlLength: storyData.audioUrl?.length,
-      audioUrlDomain: storyData.audioUrl ? new URL(storyData.audioUrl).hostname : 'N/A'
+      audioUrlDomain: storyData.audioUrl ? new URL(storyData.audioUrl).hostname : 'N/A',
+      timestamp: new Date().toISOString()
     })
 
-    setDebugInfo({
-      audioUrl: storyData.audioUrl,
-      storyTitle: storyData.title,
-      timestamp: new Date().toISOString(),
-      hasAudioUrl: !!storyData.audioUrl
-    })
-
-    // Reset audio states when story data changes
+    // CRITICAL: Reset all audio states immediately
     setAudioError(null)
     setAudioLoading(true)
     setIsPlaying(false)
     setCurrentTime(0)
     setDuration(0)
-  }, [storyData.audioUrl, storyData.title])
+    setVolume(1)
+    setIsMuted(false)
+
+    setDebugInfo({
+      audioUrl: storyData.audioUrl,
+      storyTitle: storyData.title,
+      timestamp: new Date().toISOString(),
+      hasAudioUrl: !!storyData.audioUrl,
+      storyId: storyData.title + '-' + storyData.createdAt
+    })
+
+    // Force audio element to reload if it exists
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+      audioRef.current.load()
+    }
+  }, [storyData.audioUrl, storyData.title, storyData.createdAt])
 
   // Enhanced audio event handlers with detailed logging
   useEffect(() => {
@@ -88,7 +99,8 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
       console.log('🎵 Audio metadata loaded:', {
         duration: audio.duration,
         readyState: audio.readyState,
-        networkState: audio.networkState
+        networkState: audio.networkState,
+        src: audio.src
       })
       setDuration(audio.duration || 0)
       setAudioError(null)
@@ -98,20 +110,21 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
     const handleCanPlay = () => {
       console.log('🎵 Audio can play:', {
         duration: audio.duration,
-        readyState: audio.readyState
+        readyState: audio.readyState,
+        src: audio.src
       })
       setAudioError(null)
       setAudioLoading(false)
     }
 
     const handleLoadStart = () => {
-      console.log('🎵 Audio load started')
+      console.log('🎵 Audio load started for:', audio.src)
       setAudioLoading(true)
       setAudioError(null)
     }
 
     const handleLoadedData = () => {
-      console.log('🎵 Audio data loaded')
+      console.log('🎵 Audio data loaded for:', audio.src)
       setAudioLoading(false)
     }
 
@@ -174,7 +187,11 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
     audio.addEventListener('waiting', handleWaiting)
     audio.addEventListener('playing', handlePlaying)
 
-    // Force load the audio
+    // CRITICAL: Force load the audio with the new source
+    if (audio.src !== storyData.audioUrl) {
+      console.log('🎵 Setting new audio source:', storyData.audioUrl)
+      audio.src = storyData.audioUrl
+    }
     audio.load()
 
     return () => {
@@ -277,6 +294,10 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
     console.log('🔄 Retrying audio load')
     setAudioError(null)
     setAudioLoading(true)
+    
+    // Force reload with new timestamp to bypass cache
+    const urlWithTimestamp = storyData.audioUrl + (storyData.audioUrl.includes('?') ? '&' : '?') + 't=' + Date.now()
+    audioRef.current.src = urlWithTimestamp
     audioRef.current.load()
   }
 
@@ -392,6 +413,7 @@ export default function StoryFeedback({ storyData, onNewStory }: StoryFeedbackPr
                 preload="metadata"
                 className="hidden"
                 crossOrigin="anonymous"
+                key={`audio-${storyData.title}-${storyData.createdAt}`}
               />
               
               {/* Audio Error Display */}

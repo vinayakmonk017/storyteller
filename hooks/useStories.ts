@@ -28,6 +28,8 @@ export function useStories() {
   useEffect(() => {
     if (!user) return
 
+    console.log('Setting up real-time subscription for stories...')
+    
     const subscription = supabase
       .channel('stories-changes')
       .on(
@@ -39,6 +41,8 @@ export function useStories() {
           filter: `user_id=eq.${user.id}`
         },
         (payload) => {
+          console.log('Real-time story update received:', payload)
+          
           const updatedStory = payload.new as Story
           
           // Update the query cache
@@ -51,38 +55,16 @@ export function useStories() {
             )
           })
           
-          // Check if this is the story we're waiting for
-          if (updatedStory.processing_status === 'completed') {
-            // Check if this is our processing story OR if we should switch to this completed story
-            if (processingStoryId === updatedStory.id || 
-                (processingStoryId && !stories.find(s => s.id === processingStoryId && s.processing_status === 'completed'))) {
-              
-              loadStoryFeedback(updatedStory.id)
-            }
-          } else if (updatedStory.processing_status === 'failed' && processingStoryId === updatedStory.id) {
-            setProcessingStoryId(null)
+          // If story is completed and we're tracking it, fetch its feedback
+          if (updatedStory.processing_status === 'completed' && processingStoryId === updatedStory.id) {
+            loadStoryFeedback(updatedStory.id)
           }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'story_feedback',
-          filter: `story_id=eq.${processingStoryId}`
-        },
-        (payload) => {
-          // Refresh stories to get the feedback
-          queryClient.invalidateQueries({ queryKey: ['stories', user.id] })
-          
-          // Clear processing state
-          setProcessingStoryId(null)
         }
       )
       .subscribe()
 
     return () => {
+      console.log('Cleaning up real-time subscription')
       subscription.unsubscribe()
     }
   }, [user, queryClient, processingStoryId])
@@ -94,9 +76,7 @@ export function useStories() {
         .select('*')
         .eq('story_id', storyId)
 
-      if (error) {
-        throw error
-      }
+      if (error) throw error
 
       // Update the story with its feedback in the cache
       queryClient.setQueryData(['stories', user?.id], (oldStories: any[]) => {
@@ -107,11 +87,6 @@ export function useStories() {
             : story
         )
       })
-      
-      if (feedback && feedback.length > 0) {
-        setProcessingStoryId(null)
-      }
-      
     } catch (error) {
       console.error('Error loading story feedback:', error)
     }
@@ -129,10 +104,18 @@ export function useStories() {
     }) => {
       if (!user) throw new Error('User not authenticated')
 
-      // Upload audio file
-      const fileName = `${user.id}/${Date.now()}.webm`
+      // Generate unique filename with timestamp to prevent caching issues
+      const timestamp = Date.now()
+      const fileName = `${user.id}/${timestamp}-${Math.random().toString(36).substr(2, 9)}.webm`
+      
       const audioFile = new File([storyData.audioBlob], fileName, { 
         type: storyData.audioBlob.type || 'audio/webm' 
+      })
+      
+      console.log('🎵 Uploading audio file:', {
+        fileName,
+        size: audioFile.size,
+        type: audioFile.type
       })
       
       const { data: uploadData, error: uploadError } = await storage.uploadAudio(
@@ -144,8 +127,10 @@ export function useStories() {
         throw new Error(`Failed to upload audio: ${uploadError.message}`)
       }
 
-      // Get the public URL for the uploaded file
-      const audioUrl = storage.getAudioUrl(fileName)
+      // Get the public URL for the uploaded file with cache-busting
+      const audioUrl = storage.getAudioUrl(fileName) + `?t=${timestamp}`
+      
+      console.log('🎵 Generated audio URL:', audioUrl)
       
       // Validate that the URL is accessible
       if (!audioUrl || audioUrl === 'placeholder-url') {
@@ -167,6 +152,11 @@ export function useStories() {
       if (storyError) {
         throw new Error(`Failed to create story: ${storyError.message}`)
       }
+
+      console.log('🎵 Story created successfully:', {
+        storyId: story.id,
+        audioUrl: story.audio_url
+      })
 
       // Trigger processing via edge function
       try {
@@ -240,45 +230,6 @@ export function useStories() {
       return null
     }
   }
-
-  // Better logic to find the completed story
-  useEffect(() => {
-    if (processingStoryId && stories.length > 0) {
-      // First, try to find the exact story we're tracking
-      let targetStory = stories.find(s => s.id === processingStoryId)
-      
-      // If the tracked story doesn't exist or is still pending, 
-      // look for any completed story with the same title (in case of duplicate creation)
-      if (!targetStory || targetStory.processing_status === 'pending') {
-        const completedStories = stories.filter(s => s.processing_status === 'completed')
-        if (completedStories.length > 0) {
-          // Get the most recent completed story
-          targetStory = completedStories.sort((a, b) => 
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          )[0]
-        }
-      }
-
-      if (targetStory?.processing_status === 'completed') {
-        if (targetStory.story_feedback && targetStory.story_feedback.length > 0) {
-          setProcessingStoryId(null)
-        } else {
-          loadStoryFeedback(targetStory.id)
-        }
-      }
-    }
-  }, [stories, processingStoryId])
-
-  // Add timeout fallback
-  useEffect(() => {
-    if (processingStoryId) {
-      const timeout = setTimeout(() => {
-        setProcessingStoryId(null)
-      }, 5 * 60 * 1000) // 5 minutes
-
-      return () => clearTimeout(timeout)
-    }
-  }, [processingStoryId])
 
   return {
     stories,
