@@ -19,7 +19,8 @@ import {
   Lightbulb,
   Trash2,
   AlertTriangle,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
@@ -61,8 +62,11 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [volume, setVolume] = useState(1)
+  const [isMuted, setIsMuted] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [generatingFeedback, setGeneratingFeedback] = useState(false)
   
   const audioRef = useRef<HTMLAudioElement>(null)
 
@@ -72,12 +76,36 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
     }
   }, [isOpen, storyId])
 
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    const handleTimeUpdate = () => setCurrentTime(audio.currentTime)
+    const handleLoadedMetadata = () => setDuration(audio.duration)
+    const handleEnded = () => setIsPlaying(false)
+    const handleError = (e: any) => {
+      console.error('Audio error:', e)
+      setError('Failed to load audio file')
+    }
+
+    audio.addEventListener('timeupdate', handleTimeUpdate)
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+    audio.addEventListener('ended', handleEnded)
+    audio.addEventListener('error', handleError)
+
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate)
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.removeEventListener('ended', handleEnded)
+      audio.removeEventListener('error', handleError)
+    }
+  }, [story?.audio_url])
+
   const fetchStoryDetails = async () => {
     setLoading(true)
     setError(null)
     
     try {
-      // Get the current session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       
       if (sessionError) {
@@ -116,11 +144,63 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
     }
   }
 
+  const handleGenerateFeedback = async () => {
+    if (!story) return
+    
+    setGeneratingFeedback(true)
+    setError(null)
+    
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError) {
+        throw new Error(`Authentication error: ${sessionError.message}`)
+      }
+      
+      if (!session) {
+        throw new Error('No active session found. Please sign in again.')
+      }
+
+      // Call the process-story edge function to generate feedback
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-story`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          storyId: story.id,
+          audioUrl: story.audio_url,
+          feedbackPersonality: story.feedback_personality
+        })
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Failed to generate feedback: ${response.status} ${errorText}`)
+      }
+
+      const result = await response.json()
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to generate feedback')
+      }
+
+      // Refresh the story details to get the new feedback
+      await fetchStoryDetails()
+      
+    } catch (err: any) {
+      console.error('Error generating feedback:', err)
+      setError(err.message || 'Failed to generate feedback')
+    } finally {
+      setGeneratingFeedback(false)
+    }
+  }
+
   const handleDeleteStory = async () => {
     setDeleting(true)
     
     try {
-      // Get the current session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       
       if (sessionError) {
@@ -172,16 +252,33 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
     setIsPlaying(!isPlaying)
   }
 
-  const handleTimeUpdate = () => {
-    if (audioRef.current) {
-      setCurrentTime(audioRef.current.currentTime)
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!audioRef.current) return
+    
+    const newTime = (parseFloat(e.target.value) / 100) * duration
+    audioRef.current.currentTime = newTime
+    setCurrentTime(newTime)
+  }
+
+  const toggleMute = () => {
+    if (!audioRef.current) return
+    
+    if (isMuted) {
+      audioRef.current.volume = volume
+      setIsMuted(false)
+    } else {
+      audioRef.current.volume = 0
+      setIsMuted(true)
     }
   }
 
-  const handleLoadedMetadata = () => {
-    if (audioRef.current) {
-      setDuration(audioRef.current.duration)
-    }
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!audioRef.current) return
+    
+    const newVolume = parseFloat(e.target.value) / 100
+    setVolume(newVolume)
+    audioRef.current.volume = newVolume
+    setIsMuted(newVolume === 0)
   }
 
   const formatTime = (seconds: number) => {
@@ -282,9 +379,26 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
                       </span>
                     </div>
                   </div>
-                  <Badge className={statusColors[story.processing_status as keyof typeof statusColors]}>
-                    {story.processing_status}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className={statusColors[story.processing_status as keyof typeof statusColors]}>
+                      {story.processing_status}
+                    </Badge>
+                    {(story.processing_status === 'failed' || story.processing_status === 'processing') && (
+                      <Button
+                        onClick={handleGenerateFeedback}
+                        disabled={generatingFeedback}
+                        size="sm"
+                        className="flex items-center gap-2"
+                      >
+                        {generatingFeedback ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-4 h-4" />
+                        )}
+                        Give me Feedback
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Metadata */}
@@ -339,58 +453,71 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
                       <Volume2 className="w-5 h-5" />
                       Audio Recording
                     </CardTitle>
+                    <CardDescription>Listen to your storytelling performance</CardDescription>
                   </CardHeader>
                   <CardContent>
+                    <audio
+                      ref={audioRef}
+                      src={story.audio_url}
+                      preload="metadata"
+                      className="hidden"
+                    />
+                    
                     <div className="space-y-4">
-                      <audio
-                        ref={audioRef}
-                        src={story.audio_url}
-                        onTimeUpdate={handleTimeUpdate}
-                        onLoadedMetadata={handleLoadedMetadata}
-                        onEnded={() => setIsPlaying(false)}
-                        className="hidden"
-                      />
-                      
+                      {/* Main Controls */}
                       <div className="flex items-center gap-4">
                         <Button
                           onClick={togglePlayPause}
                           size="lg"
-                          className="flex items-center gap-2"
+                          className="flex items-center gap-2 min-w-[120px]"
                         >
                           {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                           {isPlaying ? 'Pause' : 'Play'}
                         </Button>
                         
-                        <div className="flex-1">
-                          <div className="h-2 bg-gray-200 rounded-full">
-                            <div 
-                              className="h-2 bg-blue-500 rounded-full transition-all duration-200"
-                              style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
-                            />
+                        <div className="flex-1 space-y-2">
+                          {/* Progress Bar */}
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={duration > 0 ? (currentTime / duration) * 100 : 0}
+                            onChange={handleSeek}
+                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                          />
+                          
+                          {/* Time Display */}
+                          <div className="flex justify-between text-sm text-muted-foreground">
+                            <span>{formatTime(currentTime)}</span>
+                            <span>{formatTime(duration || story.duration_seconds)}</span>
                           </div>
                         </div>
+                      </div>
+
+                      {/* Volume Controls */}
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={toggleMute}
+                          className="flex items-center gap-1"
+                        >
+                          {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                        </Button>
                         
-                        <span className="text-sm text-muted-foreground">
-                          {formatTime(currentTime)} / {formatTime(duration || story.duration_seconds)}
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={isMuted ? 0 : volume * 100}
+                          onChange={handleVolumeChange}
+                          className="w-24 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                        />
+                        
+                        <span className="text-xs text-muted-foreground w-8">
+                          {Math.round((isMuted ? 0 : volume) * 100)}%
                         </span>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Transcript */}
-              {story.transcript && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Transcript</CardTitle>
-                    <CardDescription>AI-generated transcript of your recording</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                        {story.transcript}
-                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -402,7 +529,7 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <MessageSquare className="w-5 h-5" />
-                      AI Feedback
+                      Feedback
                     </CardTitle>
                     <CardDescription>
                       Personalized insights from your {personalityLabels[story.feedback_personality as keyof typeof personalityLabels]} coach
@@ -499,7 +626,19 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
                 <Card>
                   <CardContent className="text-center py-8">
                     <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-muted-foreground">No feedback available for this story</p>
+                    <p className="text-muted-foreground mb-4">No feedback available for this story</p>
+                    <Button
+                      onClick={handleGenerateFeedback}
+                      disabled={generatingFeedback}
+                      className="flex items-center gap-2"
+                    >
+                      {generatingFeedback ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" />
+                      )}
+                      Generate Feedback
+                    </Button>
                   </CardContent>
                 </Card>
               )}
@@ -516,11 +655,25 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
                         {story.processing_status === 'failed' && 'Story processing failed'}
                       </span>
                     </div>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground mb-4">
                       {story.processing_status === 'pending' && 'Your story will be processed shortly'}
                       {story.processing_status === 'processing' && 'AI is analyzing your recording and generating feedback'}
-                      {story.processing_status === 'failed' && 'There was an error processing your story. Please try recording again.'}
+                      {story.processing_status === 'failed' && 'There was an error processing your story. You can try generating feedback again.'}
                     </p>
+                    {(story.processing_status === 'failed' || story.processing_status === 'processing') && (
+                      <Button
+                        onClick={handleGenerateFeedback}
+                        disabled={generatingFeedback}
+                        className="flex items-center gap-2"
+                      >
+                        {generatingFeedback ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-4 h-4" />
+                        )}
+                        {story.processing_status === 'failed' ? 'Retry Feedback Generation' : 'Generate Feedback Now'}
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
               )}
@@ -566,6 +719,29 @@ export default function StoryDetailModal({ storyId, isOpen, onClose, onDelete }:
             </div>
           )}
         </AnimatePresence>
+
+        <style jsx>{`
+          .slider::-webkit-slider-thumb {
+            appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            border: 2px solid #ffffff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          }
+
+          .slider::-moz-range-thumb {
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            border: 2px solid #ffffff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          }
+        `}</style>
       </motion.div>
     </div>
   )
