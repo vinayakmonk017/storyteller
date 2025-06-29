@@ -41,14 +41,8 @@ export default function App() {
     }
   }, [authLoading, user])
 
-  // IMPROVED: Better story completion detection
+  // Watch for story completion via real-time updates
   useEffect(() => {
-    console.log('🔍 App.tsx: Checking for completed stories', {
-      processingStoryId,
-      storiesCount: stories.length,
-      stories: stories.map(s => ({ id: s.id, status: s.processing_status, title: s.title }))
-    })
-
     if (processingStoryId && stories.length > 0) {
       // Find the processing story
       let processingStory = stories.find(s => s.id === processingStoryId)
@@ -61,33 +55,18 @@ export default function App() {
           processingStory = completedStories.sort((a, b) => 
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
           )[0]
-          
-          console.log('🔄 Switching to completed story:', processingStory.id)
         }
       }
       
-      console.log('📖 Found processing story:', {
-        story: processingStory,
-        status: processingStory?.processing_status,
-        hasFeedback: processingStory?.story_feedback?.length > 0
-      })
-      
       if (processingStory?.processing_status === 'completed') {
-        console.log('✅ Story processing completed')
-        
         // Check if we have feedback
         if (processingStory.story_feedback && processingStory.story_feedback.length > 0) {
-          console.log('📋 Story has feedback, showing feedback screen')
           setCurrentStory(processingStory)
           setCurrentView('feedback')
           setProcessingStoryId(null)
           refreshStats()
-        } else {
-          console.log('⏳ Story completed but no feedback yet, waiting...')
-          // The useStories hook will handle loading feedback
         }
       } else if (processingStory?.processing_status === 'failed') {
-        console.log('❌ Story processing failed')
         alert('Story processing failed. Please try again.')
         setProcessingStoryId(null)
         setCurrentView('record')
@@ -120,8 +99,6 @@ export default function App() {
     }
     
     try {
-      console.log('🎬 Starting story creation process...')
-      
       createStory({
         title: generateStoryTitle(storyData.genre),
         genre: storyData.genre,
@@ -130,11 +107,9 @@ export default function App() {
         feedback_personality: storyData.feedbackPersonality,
         audioBlob: storyData.audioBlob
       })
-
-      console.log('📡 Story creation initiated, real-time updates will handle completion')
       
     } catch (error) {
-      console.error('💥 Error processing story:', error)
+      console.error('Error processing story:', error)
       alert('There was an error processing your story. Please try again.')
       setProcessingStoryId(null)
     }
@@ -254,14 +229,6 @@ export default function App() {
     )
   }
 
-  console.log('🎯 App render state:', {
-    isCreatingStory,
-    processingStoryId,
-    currentView,
-    currentStory: !!currentStory,
-    storiesCount: stories.length
-  })
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-950 dark:to-blue-950">
       {/* Header */}
@@ -350,11 +317,6 @@ export default function App() {
                       <p className="text-sm text-muted-foreground mt-2">
                         ⚡ Real-time updates enabled - no need to refresh!
                       </p>
-                      {processingStoryId && (
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Processing ID: {processingStoryId.substring(0, 8)}...
-                        </p>
-                      )}
                     </div>
                   </div>
                 </CardContent>
