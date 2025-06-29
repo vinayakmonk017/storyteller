@@ -419,44 +419,44 @@ export default function Dashboard({ userStats }: DashboardProps) {
     })
   }
 
-  // Get achievement theme colors based on website theme
-  const getAchievementThemeColors = (achievementId: string, earned: boolean) => {
-    const themeColors = {
+  // Get achievement theme colors based on website theme - using simpler, reliable classes
+  const getAchievementStyles = (achievementId: string, earned: boolean) => {
+    const themeStyles = {
       first_story: {
-        earned: 'border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 dark:border-blue-800 dark:bg-gradient-to-br dark:from-blue-950/20 dark:to-blue-900/20',
-        unearned: 'border-blue-100 bg-gradient-to-br from-blue-25 to-blue-50 dark:border-blue-900 dark:bg-gradient-to-br dark:from-blue-950/10 dark:to-blue-900/10 opacity-60'
+        earned: 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/30',
+        unearned: 'border-blue-200 bg-blue-25 dark:border-blue-800 dark:bg-blue-950/10 opacity-70'
       },
       week_warrior: {
-        earned: 'border-orange-200 bg-gradient-to-br from-orange-50 to-orange-100 dark:border-orange-800 dark:bg-gradient-to-br dark:from-orange-950/20 dark:to-orange-900/20',
-        unearned: 'border-orange-100 bg-gradient-to-br from-orange-25 to-orange-50 dark:border-orange-900 dark:bg-gradient-to-br dark:from-orange-950/10 dark:to-orange-900/10 opacity-60'
+        earned: 'border-orange-300 bg-orange-50 dark:border-orange-700 dark:bg-orange-950/30',
+        unearned: 'border-orange-200 bg-orange-25 dark:border-orange-800 dark:bg-orange-950/10 opacity-70'
       },
       genre_explorer: {
-        earned: 'border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100 dark:border-purple-800 dark:bg-gradient-to-br dark:from-purple-950/20 dark:to-purple-900/20',
-        unearned: 'border-purple-100 bg-gradient-to-br from-purple-25 to-purple-50 dark:border-purple-900 dark:bg-gradient-to-br dark:from-purple-950/10 dark:to-purple-900/10 opacity-60'
+        earned: 'border-purple-300 bg-purple-50 dark:border-purple-700 dark:bg-purple-950/30',
+        unearned: 'border-purple-200 bg-purple-25 dark:border-purple-800 dark:bg-purple-950/10 opacity-70'
       },
       marathon_storyteller: {
-        earned: 'border-green-200 bg-gradient-to-br from-green-50 to-green-100 dark:border-green-800 dark:bg-gradient-to-br dark:from-green-950/20 dark:to-green-900/20',
-        unearned: 'border-green-100 bg-gradient-to-br from-green-25 to-green-50 dark:border-green-900 dark:bg-gradient-to-br dark:from-green-950/10 dark:to-green-900/10 opacity-60'
+        earned: 'border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-950/30',
+        unearned: 'border-green-200 bg-green-25 dark:border-green-800 dark:bg-green-950/10 opacity-70'
       },
       century_club: {
-        earned: 'border-yellow-200 bg-gradient-to-br from-yellow-50 to-yellow-100 dark:border-yellow-800 dark:bg-gradient-to-br dark:from-yellow-950/20 dark:to-yellow-900/20',
-        unearned: 'border-yellow-100 bg-gradient-to-br from-yellow-25 to-yellow-50 dark:border-yellow-900 dark:bg-gradient-to-br dark:from-yellow-950/10 dark:to-yellow-900/10 opacity-60'
+        earned: 'border-yellow-300 bg-yellow-50 dark:border-yellow-700 dark:bg-yellow-950/30',
+        unearned: 'border-yellow-200 bg-yellow-25 dark:border-yellow-800 dark:bg-yellow-950/10 opacity-70'
       },
       master_storyteller: {
-        earned: 'border-indigo-200 bg-gradient-to-br from-indigo-50 to-indigo-100 dark:border-indigo-800 dark:bg-gradient-to-br dark:from-indigo-950/20 dark:to-indigo-900/20',
-        unearned: 'border-indigo-100 bg-gradient-to-br from-indigo-25 to-indigo-50 dark:border-indigo-900 dark:bg-gradient-to-br dark:from-indigo-950/10 dark:to-indigo-900/10 opacity-60'
+        earned: 'border-indigo-300 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/30',
+        unearned: 'border-indigo-200 bg-indigo-25 dark:border-indigo-800 dark:bg-indigo-950/10 opacity-70'
       }
     }
 
-    const colors = themeColors[achievementId as keyof typeof themeColors]
-    if (!colors) {
-      // Default fallback colors
+    const styles = themeStyles[achievementId as keyof typeof themeStyles]
+    if (!styles) {
+      // Default fallback styles
       return earned 
-        ? 'border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100 dark:border-gray-800 dark:bg-gradient-to-br dark:from-gray-950/20 dark:to-gray-900/20'
-        : 'border-gray-100 bg-gradient-to-br from-gray-25 to-gray-50 dark:border-gray-900 dark:bg-gradient-to-br dark:from-gray-950/10 dark:to-gray-900/10 opacity-60'
+        ? 'border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-950/30'
+        : 'border-gray-200 bg-gray-25 dark:border-gray-800 dark:bg-gray-950/10 opacity-70'
     }
 
-    return earned ? colors.earned : colors.unearned
+    return earned ? styles.earned : styles.unearned
   }
 
   return (
@@ -650,7 +650,7 @@ export default function Dashboard({ userStats }: DashboardProps) {
               {achievements.map((achievement) => (
                 <div
                   key={achievement.id}
-                  className={`p-4 rounded-lg border-2 transition-all duration-200 ${getAchievementThemeColors(achievement.id, achievement.earned)}`}
+                  className={`p-4 rounded-lg border-2 transition-all duration-200 ${getAchievementStyles(achievement.id, achievement.earned)}`}
                 >
                   <div className="flex items-start gap-3">
                     <div className={`text-2xl ${achievement.earned ? '' : 'grayscale opacity-50'}`}>
