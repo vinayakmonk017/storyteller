@@ -13,18 +13,10 @@ export function formatTime(seconds: number): string {
 
 // Generate a complete story using OpenAI or fallback to predefined stories
 export async function getRandomStory(genre: string): Promise<{ title: string; content: string }> {
-  console.log('🎯 getRandomStory called with genre:', genre)
-  
   // Check if we have Supabase configured
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
   
-  console.log('🔧 Environment check:', {
-    hasUrl: !!supabaseUrl,
-    hasKey: !!supabaseKey,
-    urlValid: supabaseUrl && !supabaseUrl.includes('placeholder')
-  })
-
   // Check for missing, empty, or placeholder values
   if (!supabaseUrl || 
       !supabaseKey || 
@@ -33,15 +25,11 @@ export async function getRandomStory(genre: string): Promise<{ title: string; co
       supabaseKey === 'your_supabase_anon_key_here' ||
       supabaseUrl.trim() === '' ||
       supabaseKey.trim() === '') {
-    console.log('⚠️ Supabase not configured, using fallback story')
     return getFallbackStory(genre)
   }
 
   try {
-    console.log('🚀 Attempting to fetch story from edge function...')
-    
     const apiUrl = `${supabaseUrl}/functions/v1/generate-story`
-    console.log('📡 API URL:', apiUrl)
     
     // Try to get story from OpenAI via edge function
     const response = await fetch(apiUrl, {
@@ -56,37 +44,27 @@ export async function getRandomStory(genre: string): Promise<{ title: string; co
       })
     })
 
-    console.log('📊 Edge function response status:', response.status)
-
     if (response.ok) {
       const data = await response.json()
-      console.log('✅ Edge function response data:', data)
       
       if (data.story && data.title) {
-        console.log('🎉 Successfully got story from OpenAI!')
         return {
           title: data.title,
           content: data.story
         }
       } else {
-        console.warn('⚠️ Invalid response format from edge function:', data)
         return getFallbackStory(genre)
       }
     } else {
-      const errorText = await response.text()
-      console.warn('❌ Edge function failed:', response.status, errorText)
       return getFallbackStory(genre)
     }
   } catch (error) {
-    console.error('💥 Error calling edge function:', error)
     return getFallbackStory(genre)
   }
 }
 
 // Fallback stories for when OpenAI is not available
 function getFallbackStory(genre: string): { title: string; content: string } {
-  console.log('🔄 Using fallback story for genre:', genre)
-  
   const fallbackStories = {
     adventure: {
       title: "The Hidden Cave Discovery",
@@ -171,7 +149,6 @@ Finally, as the clock struck 11:59, Sarah input the final calculation. The world
   }
 
   const story = fallbackStories[genre as keyof typeof fallbackStories] || fallbackStories.adventure
-  console.log('📖 Returning fallback story:', story.title)
   return story
 }
 

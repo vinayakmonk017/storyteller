@@ -68,14 +68,12 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
 
   // Load initial story when component mounts
   useEffect(() => {
-    console.log('🎬 StoryRecorder component mounted, loading initial story...')
     loadNewStory()
   }, [])
 
   // Load new story when genre changes
   useEffect(() => {
     if (selectedGenre) {
-      console.log('🎭 Genre changed to:', selectedGenre, '- Loading new story...')
       loadNewStory()
     }
   }, [selectedGenre])
@@ -111,17 +109,13 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
   }, [isRecording, isPaused])
 
   const loadNewStory = async () => {
-    console.log('📚 loadNewStory called for genre:', selectedGenre)
     setIsLoadingStory(true)
     setStoryError(null)
     
     try {
-      console.log('⏳ Starting story generation...')
       const story = await getRandomStory(selectedGenre)
-      console.log({story})
       setCurrentStory(story)
     } catch (error) {
-      console.error('❌ Error loading story:', error)
       setStoryError('Failed to load story. Please try again.')
       
       // Fallback to a simple story
@@ -131,7 +125,6 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
       })
     } finally {
       setIsLoadingStory(false)
-      console.log('🏁 Story loading completed')
     }
   }
 
@@ -215,7 +208,6 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
       }
 
       mediaRecorder.onerror = (event) => {
-        console.error('MediaRecorder error:', event)
         cleanupRecording()
         alert('Recording error occurred. Please try again.')
       }
@@ -238,7 +230,6 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
       }, 1000)
 
     } catch (error) {
-      console.error('Error starting recording:', error)
       alert('Unable to access microphone. Please check your permissions and try again.')
     }
   }
@@ -363,7 +354,6 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
                     <Select 
                       value={selectedGenre} 
                       onValueChange={(value) => {
-                        console.log('🎭 User selected new genre:', value)
                         setSelectedGenre(value)
                       }}
                     >
@@ -475,7 +465,6 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  console.log('🔄 User clicked "New Story" button')
                   loadNewStory()
                 }}
                 className="flex items-center gap-2"
