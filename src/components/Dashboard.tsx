@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/src
 import { Badge } from '@/src/components/ui/badge'
 import { Progress } from '@/src/components/ui/progress'
 import { Skeleton } from '@/src/components/ui/skeleton'
-import { Calendar, Trophy, Target, TrendingUp, Book, Clock, Award, Flame, Eye, Star, Zap, Map, Timer, Crown } from 'lucide-react'
+import { Calendar, Trophy, Target, TrendingUp, Book, Clock, Award, Flame, Eye } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import { useStories } from '@/hooks/useStories'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
@@ -419,73 +419,44 @@ export default function Dashboard({ userStats }: DashboardProps) {
     })
   }
 
-  // Get achievement theme colors and icons
-  const getAchievementTheme = (achievementId: string, earned: boolean) => {
-    const themes = {
+  // Get achievement theme colors based on website theme - using simpler, reliable classes
+  const getAchievementStyles = (achievementId: string, earned: boolean) => {
+    const themeStyles = {
       first_story: {
-        icon: Target,
-        colors: {
-          earned: 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/30',
-          unearned: 'border-blue-200 bg-blue-25 dark:border-blue-800 dark:bg-blue-950/10 opacity-70',
-          iconColor: earned ? 'text-blue-600' : 'text-blue-400'
-        }
+        earned: 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/30',
+        unearned: 'border-blue-200 bg-blue-25 dark:border-blue-800 dark:bg-blue-950/10 opacity-70'
       },
       week_warrior: {
-        icon: Flame,
-        colors: {
-          earned: 'border-orange-300 bg-orange-50 dark:border-orange-700 dark:bg-orange-950/30',
-          unearned: 'border-orange-200 bg-orange-25 dark:border-orange-800 dark:bg-orange-950/10 opacity-70',
-          iconColor: earned ? 'text-orange-600' : 'text-orange-400'
-        }
+        earned: 'border-orange-300 bg-orange-50 dark:border-orange-700 dark:bg-orange-950/30',
+        unearned: 'border-orange-200 bg-orange-25 dark:border-orange-800 dark:bg-orange-950/10 opacity-70'
       },
       genre_explorer: {
-        icon: Map,
-        colors: {
-          earned: 'border-purple-300 bg-purple-50 dark:border-purple-700 dark:bg-purple-950/30',
-          unearned: 'border-purple-200 bg-purple-25 dark:border-purple-800 dark:bg-purple-950/10 opacity-70',
-          iconColor: earned ? 'text-purple-600' : 'text-purple-400'
-        }
+        earned: 'border-purple-300 bg-purple-50 dark:border-purple-700 dark:bg-purple-950/30',
+        unearned: 'border-purple-200 bg-purple-25 dark:border-purple-800 dark:bg-purple-950/10 opacity-70'
       },
       marathon_storyteller: {
-        icon: Timer,
-        colors: {
-          earned: 'border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-950/30',
-          unearned: 'border-green-200 bg-green-25 dark:border-green-800 dark:bg-green-950/10 opacity-70',
-          iconColor: earned ? 'text-green-600' : 'text-green-400'
-        }
+        earned: 'border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-950/30',
+        unearned: 'border-green-200 bg-green-25 dark:border-green-800 dark:bg-green-950/10 opacity-70'
       },
       century_club: {
-        icon: Zap,
-        colors: {
-          earned: 'border-yellow-300 bg-yellow-50 dark:border-yellow-700 dark:bg-yellow-950/30',
-          unearned: 'border-yellow-200 bg-yellow-25 dark:border-yellow-800 dark:bg-yellow-950/10 opacity-70',
-          iconColor: earned ? 'text-yellow-600' : 'text-yellow-400'
-        }
+        earned: 'border-yellow-300 bg-yellow-50 dark:border-yellow-700 dark:bg-yellow-950/30',
+        unearned: 'border-yellow-200 bg-yellow-25 dark:border-yellow-800 dark:bg-yellow-950/10 opacity-70'
       },
       master_storyteller: {
-        icon: Crown,
-        colors: {
-          earned: 'border-indigo-300 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/30',
-          unearned: 'border-indigo-200 bg-indigo-25 dark:border-indigo-800 dark:bg-indigo-950/10 opacity-70',
-          iconColor: earned ? 'text-indigo-600' : 'text-indigo-400'
-        }
+        earned: 'border-indigo-300 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/30',
+        unearned: 'border-indigo-200 bg-indigo-25 dark:border-indigo-800 dark:bg-indigo-950/10 opacity-70'
       }
     }
 
-    const theme = themes[achievementId as keyof typeof themes]
-    if (!theme) {
-      // Default fallback
-      return {
-        icon: Star,
-        colors: {
-          earned: 'border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-950/30',
-          unearned: 'border-gray-200 bg-gray-25 dark:border-gray-800 dark:bg-gray-950/10 opacity-70',
-          iconColor: earned ? 'text-gray-600' : 'text-gray-400'
-        }
-      }
+    const styles = themeStyles[achievementId as keyof typeof themeStyles]
+    if (!styles) {
+      // Default fallback styles
+      return earned 
+        ? 'border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-950/30'
+        : 'border-gray-200 bg-gray-25 dark:border-gray-800 dark:bg-gray-950/10 opacity-70'
     }
 
-    return theme
+    return earned ? styles.earned : styles.unearned
   }
 
   return (
@@ -676,52 +647,45 @@ export default function Dashboard({ userStats }: DashboardProps) {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {achievements.map((achievement) => {
-                const theme = getAchievementTheme(achievement.id, achievement.earned)
-                const IconComponent = theme.icon
-                
-                return (
-                  <div
-                    key={achievement.id}
-                    className={`p-4 rounded-lg border-2 transition-all duration-200 ${
-                      achievement.earned ? theme.colors.earned : theme.colors.unearned
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`p-2 rounded-lg ${achievement.earned ? 'bg-white/50' : 'bg-white/30'}`}>
-                        <IconComponent className={`w-6 h-6 ${theme.colors.iconColor}`} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-sm truncate">{achievement.title}</h3>
-                        <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{achievement.description}</p>
-                        
-                        {achievement.earned ? (
-                          <div className="space-y-1">
-                            <Badge variant="secondary" className="text-xs">
-                              <Award className="w-3 h-3 mr-1" />
-                              Earned
-                            </Badge>
-                            {achievement.earned_at && (
-                              <p className="text-xs text-muted-foreground">
-                                {formatAchievementDate(achievement.earned_at)}
-                              </p>
-                            )}
+              {achievements.map((achievement) => (
+                <div
+                  key={achievement.id}
+                  className={`p-4 rounded-lg border-2 transition-all duration-200 ${getAchievementStyles(achievement.id, achievement.earned)}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`text-2xl ${achievement.earned ? '' : 'grayscale opacity-50'}`}>
+                      {achievement.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-sm truncate">{achievement.title}</h3>
+                      <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{achievement.description}</p>
+                      
+                      {achievement.earned ? (
+                        <div className="space-y-1">
+                          <Badge variant="secondary" className="text-xs">
+                            <Award className="w-3 h-3 mr-1" />
+                            Earned
+                          </Badge>
+                          {achievement.earned_at && (
+                            <p className="text-xs text-muted-foreground">
+                              {formatAchievementDate(achievement.earned_at)}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Progress</span>
+                            <span className="text-xs font-medium">{achievement.progress}%</span>
                           </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs text-muted-foreground">Progress</span>
-                              <span className="text-xs font-medium">{achievement.progress}%</span>
-                            </div>
-                            <Progress value={achievement.progress} className="h-1" />
-                            <p className="text-xs text-muted-foreground">{achievement.progressText}</p>
-                          </div>
-                        )}
-                      </div>
+                          <Progress value={achievement.progress} className="h-1" />
+                          <p className="text-xs text-muted-foreground">{achievement.progressText}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
-                )
-              })}
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
