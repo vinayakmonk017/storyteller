@@ -191,6 +191,7 @@ export function useStories() {
       return story
     },
     onSuccess: (newStory) => {
+      console.log({newStory})
       console.log('🎯 Story creation mutation succeeded, setting processing ID:', newStory.id)
       
       // Add the new story to the cache
