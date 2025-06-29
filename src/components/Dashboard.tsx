@@ -28,6 +28,20 @@ interface DashboardProps {
   }
 }
 
+interface Achievement {
+  id: string
+  title: string
+  description: string
+  icon: string
+  achievement_type: string
+  criteria: Record<string, any>
+  points: number
+  earned: boolean
+  earned_at: string | null
+  progress?: number
+  progressText?: string
+}
+
 export default function Dashboard({ userStats }: DashboardProps) {
   const { stories } = useStories()
   const queryClient = useQueryClient()
@@ -42,16 +56,10 @@ export default function Dashboard({ userStats }: DashboardProps) {
     feedback: string
     processing_status: string
   }>>([])
-  const [achievements, setAchievements] = useState<Array<{
-    id: string
-    title: string
-    description: string
-    icon: string
-    earned: boolean
-    earned_at: string | null
-  }>>([])
+  const [achievements, setAchievements] = useState<Achievement[]>([])
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null)
   const [showStoryModal, setShowStoryModal] = useState(false)
+  const [loadingAchievements, setLoadingAchievements] = useState(true)
 
   // Generate weekly progress data from real stories
   useEffect(() => {
@@ -62,10 +70,10 @@ export default function Dashboard({ userStats }: DashboardProps) {
     }
   }, [stories])
 
-  // Load achievements data
+  // Load achievements data with real calculations
   useEffect(() => {
-    loadAchievements()
-  }, [userStats.achievements])
+    loadRealAchievements()
+  }, [userStats, stories])
 
   const generateWeeklyProgress = () => {
     const today = new Date()
@@ -166,79 +174,122 @@ export default function Dashboard({ userStats }: DashboardProps) {
     setRecentStories(recentCompleted)
   }
 
-  const loadAchievements = async () => {
+  const loadRealAchievements = async () => {
+    setLoadingAchievements(true)
+    
     try {
-      // Get all available achievements
+      // Get all available achievements from database
       const { data: allAchievements, error } = await db.getAllAchievements()
-      if (error) throw error
-      
+      if (error) {
+        console.error('Error loading achievements:', error)
+        return
+      }
+
+      // Get earned achievement IDs
       const earnedAchievementIds = userStats.achievements.map(a => a.id)
+      const earnedAchievementsMap = new Map(
+        userStats.achievements.map(a => [a.id, a.earned_at])
+      )
+
+      // Calculate unique genres from stories
+      const uniqueGenres = new Set(stories.map(story => story.genre))
       
-      const achievementsList = [
-        {
-          id: 'first_story',
-          title: 'First Story',
-          description: 'Recorded your very first story',
-          icon: '🎯',
-          earned: earnedAchievementIds.includes('first_story'),
-          earned_at: userStats.achievements.find(a => a.id === 'first_story')?.earned_at || null
-        },
-        {
-          id: 'week_warrior',
-          title: 'Week Warrior',
-          description: 'Maintained a 7-day streak',
-          icon: '🔥',
-          earned: earnedAchievementIds.includes('week_warrior'),
-          earned_at: userStats.achievements.find(a => a.id === 'week_warrior')?.earned_at || null
-        },
-        {
-          id: 'genre_explorer',
-          title: 'Genre Explorer',
-          description: 'Tried all 6 story genres',
-          icon: '🗺️',
-          earned: genreData.length >= 6,
-          earned_at: genreData.length >= 6 ? new Date().toISOString() : null
-        },
-        {
-          id: 'marathon_storyteller',
-          title: 'Marathon Storyteller',
-          description: 'Recorded a 15-minute story',
-          icon: '⏰',
-          earned: stories.some(story => story.duration_seconds >= 900),
-          earned_at: stories.some(story => story.duration_seconds >= 900) ? new Date().toISOString() : null
-        },
-        {
-          id: 'century_club',
-          title: 'Century Club',
-          description: 'Recorded 100 stories',
-          icon: '💯',
-          earned: userStats.totalStories >= 100,
-          earned_at: userStats.totalStories >= 100 ? new Date().toISOString() : null
-        },
-        {
-          id: 'master_storyteller',
-          title: 'Master Storyteller',
-          description: 'Achieved 30-day streak',
-          icon: '👑',
-          earned: userStats.currentStreak >= 30,
-          earned_at: userStats.currentStreak >= 30 ? new Date().toISOString() : null
+      // Find longest story duration
+      const longestStoryDuration = stories.reduce((max, story) => 
+        Math.max(max, story.duration_seconds), 0
+      )
+
+      // Process each achievement with real data
+      const processedAchievements: Achievement[] = (allAchievements || []).map(achievement => {
+        const isEarned = earnedAchievementIds.includes(achievement.id)
+        let progress = 0
+        let progressText = ''
+
+        // Calculate progress based on achievement type and criteria
+        switch (achievement.id) {
+          case 'first_story':
+            progress = userStats.totalStories > 0 ? 100 : 0
+            progressText = userStats.totalStories > 0 ? 'Completed!' : 'Record your first story'
+            break
+
+          case 'week_warrior':
+            progress = Math.min((userStats.currentStreak / 7) * 100, 100)
+            progressText = `${userStats.currentStreak}/7 days`
+            break
+
+          case 'genre_explorer':
+            progress = Math.min((uniqueGenres.size / 6) * 100, 100)
+            progressText = `${uniqueGenres.size}/6 genres explored`
+            break
+
+          case 'marathon_storyteller':
+            const targetDuration = 900 // 15 minutes
+            progress = Math.min((longestStoryDuration / targetDuration) * 100, 100)
+            const longestMinutes = Math.ceil(longestStoryDuration / 60)
+            progressText = `${longestMinutes}/15 minutes (longest story)`
+            break
+
+          case 'century_club':
+            progress = Math.min((userStats.totalStories / 100) * 100, 100)
+            progressText = `${userStats.totalStories}/100 stories`
+            break
+
+          case 'master_storyteller':
+            progress = Math.min((userStats.currentStreak / 30) * 100, 100)
+            progressText = `${userStats.currentStreak}/30 days`
+            break
+
+          default:
+            progress = isEarned ? 100 : 0
+            progressText = isEarned ? 'Completed!' : 'In progress'
         }
-      ]
+
+        return {
+          id: achievement.id,
+          title: achievement.title,
+          description: achievement.description,
+          icon: achievement.icon,
+          achievement_type: achievement.achievement_type,
+          criteria: achievement.criteria,
+          points: achievement.points,
+          earned: isEarned,
+          earned_at: earnedAchievementsMap.get(achievement.id) || null,
+          progress: Math.round(progress),
+          progressText
+        }
+      })
+
+      // Sort achievements: earned first, then by progress
+      processedAchievements.sort((a, b) => {
+        if (a.earned && !b.earned) return -1
+        if (!a.earned && b.earned) return 1
+        if (a.earned && b.earned) return 0
+        return (b.progress || 0) - (a.progress || 0)
+      })
+
+      setAchievements(processedAchievements)
       
-      setAchievements(achievementsList)
     } catch (error) {
       console.error('Error loading achievements:', error)
-      // Fallback to basic achievements
+      
+      // Fallback to basic achievements if database fails
       setAchievements([
         {
           id: 'first_story',
           title: 'First Story',
           description: 'Recorded your very first story',
           icon: '🎯',
+          achievement_type: 'milestone',
+          criteria: { stories_count: 1 },
+          points: 10,
           earned: userStats.totalStories > 0,
-          earned_at: userStats.totalStories > 0 ? new Date().toISOString() : null
+          earned_at: userStats.totalStories > 0 ? new Date().toISOString() : null,
+          progress: userStats.totalStories > 0 ? 100 : 0,
+          progressText: userStats.totalStories > 0 ? 'Completed!' : 'Record your first story'
         }
       ])
+    } finally {
+      setLoadingAchievements(false)
     }
   }
 
@@ -301,6 +352,14 @@ export default function Dashboard({ userStats }: DashboardProps) {
       case 'failed': return 'bg-red-100 text-red-800'
       default: return 'bg-gray-100 text-gray-800'
     }
+  }
+
+  const formatAchievementDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    })
   }
 
   return (
@@ -465,36 +524,68 @@ export default function Dashboard({ userStats }: DashboardProps) {
           <CardDescription>Your storytelling milestones and badges</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {achievements.map((achievement) => (
-              <div
-                key={achievement.id}
-                className={`p-4 rounded-lg border-2 transition-all duration-200 ${
-                  achievement.earned
-                    ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20'
-                    : 'border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950/20 opacity-60'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="text-2xl">{achievement.icon}</div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-sm">{achievement.title}</h3>
-                    <p className="text-xs text-muted-foreground mb-2">{achievement.description}</p>
-                    {achievement.earned ? (
-                      <Badge variant="secondary" className="text-xs">
-                        <Award className="w-3 h-3 mr-1" />
-                        Earned
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs">
-                        Locked
-                      </Badge>
-                    )}
+          {loadingAchievements ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="p-4 rounded-lg border-2 border-gray-200 bg-gray-50 animate-pulse">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-gray-300 rounded"></div>
+                    <div className="flex-1">
+                      <div className="h-4 bg-gray-300 rounded mb-2"></div>
+                      <div className="h-3 bg-gray-300 rounded mb-2"></div>
+                      <div className="h-2 bg-gray-300 rounded"></div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {achievements.map((achievement) => (
+                <div
+                  key={achievement.id}
+                  className={`p-4 rounded-lg border-2 transition-all duration-200 ${
+                    achievement.earned
+                      ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20'
+                      : 'border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950/20'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`text-2xl ${achievement.earned ? '' : 'grayscale opacity-50'}`}>
+                      {achievement.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-sm truncate">{achievement.title}</h3>
+                      <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{achievement.description}</p>
+                      
+                      {achievement.earned ? (
+                        <div className="space-y-1">
+                          <Badge variant="secondary" className="text-xs">
+                            <Award className="w-3 h-3 mr-1" />
+                            Earned
+                          </Badge>
+                          {achievement.earned_at && (
+                            <p className="text-xs text-muted-foreground">
+                              {formatAchievementDate(achievement.earned_at)}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Progress</span>
+                            <span className="text-xs font-medium">{achievement.progress}%</span>
+                          </div>
+                          <Progress value={achievement.progress} className="h-1" />
+                          <p className="text-xs text-muted-foreground">{achievement.progressText}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
