@@ -33,6 +33,7 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
   const [storyError, setStoryError] = useState<string | null>(null)
   const [audioLevel, setAudioLevel] = useState(0)
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false)
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -68,15 +69,18 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
 
   // Load initial story when component mounts
   useEffect(() => {
-    loadNewStory()
-  }, [])
+    if (!isInitialized) {
+      loadNewStory()
+      setIsInitialized(true)
+    }
+  }, [isInitialized])
 
-  // Load new story when genre changes
+  // Load new story when genre changes (but only after initialization)
   useEffect(() => {
-    if (selectedGenre) {
+    if (isInitialized && selectedGenre) {
       loadNewStory()
     }
-  }, [selectedGenre])
+  }, [selectedGenre, isInitialized])
 
   // Audio level monitoring
   useEffect(() => {
