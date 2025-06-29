@@ -5,23 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/src
 import { Badge } from '@/src/components/ui/badge'
 import { Progress } from '@/src/components/ui/progress'
 import { Skeleton } from '@/src/components/ui/skeleton'
-import { 
-  Calendar, 
-  Trophy, 
-  Target, 
-  TrendingUp, 
-  Book, 
-  Clock, 
-  Award, 
-  Flame, 
-  Eye,
-  Zap,
-  Map,
-  Timer,
-  Crown,
-  Compass,
-  Star
-} from 'lucide-react'
+import { Calendar, Trophy, Target, TrendingUp, Book, Clock, Award, Flame, Eye } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import { useStories } from '@/hooks/useStories'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
@@ -351,7 +335,7 @@ export default function Dashboard({ userStats }: DashboardProps) {
           id: 'first_story',
           title: 'First Story',
           description: 'Recorded your very first story',
-          icon: 'target',
+          icon: '🎯',
           achievement_type: 'milestone',
           criteria: { stories_count: 1 },
           points: 10,
@@ -473,21 +457,6 @@ export default function Dashboard({ userStats }: DashboardProps) {
     }
 
     return earned ? styles.earned : styles.unearned
-  }
-
-  // Map achievement IDs to Lucide icons
-  const getAchievementIcon = (achievementId: string) => {
-    const iconMap = {
-      first_story: Target,
-      week_warrior: Flame,
-      genre_explorer: Compass,
-      marathon_storyteller: Timer,
-      century_club: Star,
-      master_storyteller: Crown
-    }
-
-    const IconComponent = iconMap[achievementId as keyof typeof iconMap] || Target
-    return IconComponent
   }
 
   return (
@@ -678,49 +647,45 @@ export default function Dashboard({ userStats }: DashboardProps) {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {achievements.map((achievement) => {
-                const IconComponent = getAchievementIcon(achievement.id)
-                
-                return (
-                  <div
-                    key={achievement.id}
-                    className={`p-4 rounded-lg border-2 transition-all duration-200 ${getAchievementStyles(achievement.id, achievement.earned)}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`${achievement.earned ? 'text-current' : 'text-gray-400'}`}>
-                        <IconComponent className="w-6 h-6" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-sm truncate">{achievement.title}</h3>
-                        <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{achievement.description}</p>
-                        
-                        {achievement.earned ? (
-                          <div className="space-y-1">
-                            <Badge variant="secondary" className="text-xs">
-                              <Award className="w-3 h-3 mr-1" />
-                              Earned
-                            </Badge>
-                            {achievement.earned_at && (
-                              <p className="text-xs text-muted-foreground">
-                                {formatAchievementDate(achievement.earned_at)}
-                              </p>
-                            )}
+              {achievements.map((achievement) => (
+                <div
+                  key={achievement.id}
+                  className={`p-4 rounded-lg border-2 transition-all duration-200 ${getAchievementStyles(achievement.id, achievement.earned)}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`text-2xl ${achievement.earned ? '' : 'grayscale opacity-50'}`}>
+                      {achievement.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-sm truncate">{achievement.title}</h3>
+                      <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{achievement.description}</p>
+                      
+                      {achievement.earned ? (
+                        <div className="space-y-1">
+                          <Badge variant="secondary" className="text-xs">
+                            <Award className="w-3 h-3 mr-1" />
+                            Earned
+                          </Badge>
+                          {achievement.earned_at && (
+                            <p className="text-xs text-muted-foreground">
+                              {formatAchievementDate(achievement.earned_at)}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Progress</span>
+                            <span className="text-xs font-medium">{achievement.progress}%</span>
                           </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs text-muted-foreground">Progress</span>
-                              <span className="text-xs font-medium">{achievement.progress}%</span>
-                            </div>
-                            <Progress value={achievement.progress} className="h-1" />
-                            <p className="text-xs text-muted-foreground">{achievement.progressText}</p>
-                          </div>
-                        )}
-                      </div>
+                          <Progress value={achievement.progress} className="h-1" />
+                          <p className="text-xs text-muted-foreground">{achievement.progressText}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
-                )
-              })}
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
