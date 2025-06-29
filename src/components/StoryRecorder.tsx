@@ -24,7 +24,7 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
   const [isRecording, setIsRecording] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [timeLeft, setTimeLeft] = useState(0)
-  const [selectedDuration, setSelectedDuration] = useState(300) // 5 minutes default
+  const [selectedDuration, setSelectedDuration] = useState(120) // 2 minutes default
   const [selectedGenre, setSelectedGenre] = useState('adventure')
   const [selectedPersonality, setSelectedPersonality] = useState('encouraging')
   const [currentStory, setCurrentStory] = useState({ title: '', content: '' })
@@ -43,9 +43,9 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
   const animationFrameRef = useRef<number | null>(null)
 
   const durations = [
-    { value: 120, label: '2 minutes', icon: '⚡' },
+    { value: 120, label: '2 minutes', icon: '⚡', recommended: true },
     { value: 180, label: '3 minutes', icon: '🎯' },
-    { value: 300, label: '5 minutes', icon: '⭐', recommended: true },
+    { value: 300, label: '5 minutes', icon: '⭐' },
     { value: 600, label: '10 minutes', icon: '🚀' },
     { value: 900, label: '15 minutes', icon: '👑' }
   ]
@@ -75,12 +75,12 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
     }
   }, [isInitialized])
 
-  // Load new story when genre changes (but only after initialization)
+  // Load new story when genre or duration changes (but only after initialization)
   useEffect(() => {
-    if (isInitialized && selectedGenre) {
+    if (isInitialized && (selectedGenre || selectedDuration)) {
       loadNewStory()
     }
-  }, [selectedGenre, isInitialized])
+  }, [selectedGenre, selectedDuration, isInitialized])
 
   // Audio level monitoring
   useEffect(() => {
@@ -117,7 +117,12 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
     setStoryError(null)
     
     try {
-      const story = await getRandomStory(selectedGenre)
+      // Calculate target word count based on duration
+      // Average reading speed is about 150-200 words per minute
+      // We'll use 175 words per minute as a baseline
+      const targetWords = Math.round((selectedDuration / 60) * 175)
+      
+      const story = await getRandomStory(selectedGenre, targetWords)
       setCurrentStory(story)
     } catch (error) {
       setStoryError('Failed to load story. Please try again.')
@@ -522,7 +527,7 @@ export default function StoryRecorder({ onStoryComplete }: StoryRecorderProps) {
                 📖 Estimated reading time: {Math.ceil(currentStory.content.length / 200)} min
               </span>
               <span className="flex items-center gap-1">
-                📝 {currentStory.content.length} characters
+                📝 {currentStory.content.split(' ').length} words
               </span>
             </div>
           </div>

@@ -8,7 +8,7 @@ const corsHeaders = {
 
 interface GenerateStoryRequest {
   genre: string
-  length?: 'short' | 'medium' | 'long'
+  wordCount?: number
 }
 
 Deno.serve(async (req) => {
@@ -18,21 +18,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { genre, length = 'medium' }: GenerateStoryRequest = await req.json()
-
-    console.log(`Generating ${length} ${genre} story...`)
+    const { genre, wordCount = 350 }: GenerateStoryRequest = await req.json()
 
     let story
     let usedFallback = false
 
     try {
       // Try to generate story using OpenAI
-      story = await generateStoryWithOpenAI(genre, length)
-      console.log('Story generated successfully with OpenAI')
+      story = await generateStoryWithOpenAI(genre, wordCount)
     } catch (openaiError) {
-      console.log('OpenAI generation failed, using fallback:', openaiError.message)
       // Use fallback story if OpenAI fails
-      story = getFallbackStory(genre, length)
+      story = getFallbackStory(genre, wordCount)
       usedFallback = true
     }
 
@@ -41,7 +37,8 @@ Deno.serve(async (req) => {
         success: true, 
         story: story.content,
         title: story.title,
-        fallback: usedFallback
+        fallback: usedFallback,
+        wordCount: story.content.split(' ').length
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -50,11 +47,9 @@ Deno.serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Error in generate-story function:', error)
-    
     // Always return a fallback story as last resort
     try {
-      const fallbackStory = getFallbackStory('adventure', 'medium')
+      const fallbackStory = getFallbackStory('adventure', 350)
       
       return new Response(
         JSON.stringify({ 
@@ -62,7 +57,8 @@ Deno.serve(async (req) => {
           story: fallbackStory.content,
           title: fallbackStory.title,
           fallback: true,
-          error: 'Used default fallback story'
+          error: 'Used default fallback story',
+          wordCount: fallbackStory.content.split(' ').length
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -70,8 +66,6 @@ Deno.serve(async (req) => {
         }
       )
     } catch (fallbackError) {
-      console.error('Even fallback failed:', fallbackError)
-      
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -88,7 +82,7 @@ Deno.serve(async (req) => {
   }
 })
 
-async function generateStoryWithOpenAI(genre: string, length: string): Promise<{
+async function generateStoryWithOpenAI(genre: string, wordCount: number): Promise<{
   title: string
   content: string
 }> {
@@ -96,12 +90,6 @@ async function generateStoryWithOpenAI(genre: string, length: string): Promise<{
   
   if (!openaiApiKey) {
     throw new Error('OpenAI API key not found in environment variables')
-  }
-
-  const lengthInstructions = {
-    short: 'Write a complete short story in 150-200 words',
-    medium: 'Write a complete story in 250-350 words', 
-    long: 'Write a complete story in 400-500 words'
   }
 
   const genrePrompts = {
@@ -120,6 +108,7 @@ async function generateStoryWithOpenAI(genre: string, length: string): Promise<{
 3. Appropriate for language learners
 4. Rich in descriptive language and dialogue
 5. Suitable for oral storytelling practice
+6. Exactly ${wordCount} words (±10 words is acceptable)
 
 Always respond with a JSON object containing:
 - "title": A compelling story title
@@ -127,7 +116,7 @@ Always respond with a JSON object containing:
 
 The story should be ready for someone to read aloud and practice their storytelling skills.`
 
-  const userPrompt = `${lengthInstructions[length as keyof typeof lengthInstructions]} about ${genrePrompts[genre as keyof typeof genrePrompts]}. 
+  const userPrompt = `Write a complete story of exactly ${wordCount} words about ${genrePrompts[genre as keyof typeof genrePrompts]}. 
 
 The story should:
 - Have a clear protagonist and conflict
@@ -135,10 +124,9 @@ The story should:
 - Be engaging from start to finish
 - End with a satisfying conclusion
 - Be perfect for oral storytelling practice
+- Be exactly ${wordCount} words long
 
-Please make it original, creative, and compelling.`
-
-  console.log('Sending request to OpenAI API...')
+Please make it original, creative, and compelling. Focus on creating a story that flows well when read aloud and helps with pronunciation and storytelling skills.`
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -153,14 +141,13 @@ Please make it original, creative, and compelling.`
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.8,
-      max_tokens: 800,
+      max_tokens: Math.max(800, wordCount + 200), // Ensure enough tokens for the requested word count
       response_format: { type: 'json_object' }
     }),
   })
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error('OpenAI API error:', response.status, errorText)
     throw new Error(`OpenAI API error: ${response.status} - ${errorText}`)
   }
 
@@ -179,12 +166,11 @@ Please make it original, creative, and compelling.`
       content: parsedStory.content || parsedStory.story || ''
     }
   } catch (parseError) {
-    console.error('Error parsing OpenAI response:', parseError)
     throw new Error('Failed to parse story response from OpenAI')
   }
 }
 
-function getFallbackStory(genre: string, length: string = 'medium'): { title: string; content: string } {
+function getFallbackStory(genre: string, wordCount: number = 350): { title: string; content: string } {
   const fallbackStories = {
     adventure: {
       short: {
@@ -380,8 +366,16 @@ Elena's clinic became a sanctuary where people could safely store their memories
     }
   }
 
+  // Determine story length based on word count
+  let storyLength = 'medium'
+  if (wordCount <= 150) {
+    storyLength = 'short'
+  } else if (wordCount >= 400) {
+    storyLength = 'long'
+  }
+
   const selectedGenre = fallbackStories[genre as keyof typeof fallbackStories] || fallbackStories.adventure
-  const selectedLength = selectedGenre[length as keyof typeof selectedGenre] || selectedGenre.medium
+  const selectedLength = selectedGenre[storyLength as keyof typeof selectedGenre] || selectedGenre.medium
   
   return selectedLength
 }
