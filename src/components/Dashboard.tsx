@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/src/components/ui/card'
 import { Badge } from '@/src/components/ui/badge'
 import { Progress } from '@/src/components/ui/progress'
+import { Skeleton } from '@/src/components/ui/skeleton'
 import { Calendar, Trophy, Target, TrendingUp, Book, Clock, Award, Flame, Eye } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import { useStories } from '@/hooks/useStories'
@@ -42,8 +43,59 @@ interface Achievement {
   progressText?: string
 }
 
+// Skeleton components for loading states
+const WeeklyProgressSkeleton = () => (
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center gap-2">
+        <TrendingUp className="h-5 w-5" />
+        Weekly Progress
+      </CardTitle>
+      <CardDescription>Your storytelling activity this week</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <div className="h-[300px] space-y-4">
+        {/* Chart area skeleton */}
+        <div className="h-[240px] bg-gray-100 rounded-lg animate-pulse" />
+        
+        {/* X-axis labels skeleton */}
+        <div className="flex justify-between">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <Skeleton key={i} className="h-4 w-8" />
+          ))}
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+)
+
+const GenreDistributionSkeleton = () => (
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center gap-2">
+        <Book className="h-5 w-5" />
+        Genre Distribution
+      </CardTitle>
+      <CardDescription>Your favorite story genres</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <div className="h-[300px] space-y-4">
+        {/* Chart area skeleton */}
+        <div className="h-[240px] bg-gray-100 rounded-lg animate-pulse" />
+        
+        {/* X-axis labels skeleton */}
+        <div className="flex justify-between">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-4 w-16" />
+          ))}
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+)
+
 export default function Dashboard({ userStats }: DashboardProps) {
-  const { stories } = useStories()
+  const { stories, loading: storiesLoading } = useStories()
   const queryClient = useQueryClient()
   const [progressData, setProgressData] = useState<Array<{ day: string; stories: number; minutes: number }>>([])
   const [genreData, setGenreData] = useState<Array<{ genre: string; count: number; color: string }>>([])
@@ -60,15 +112,20 @@ export default function Dashboard({ userStats }: DashboardProps) {
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null)
   const [showStoryModal, setShowStoryModal] = useState(false)
   const [loadingAchievements, setLoadingAchievements] = useState(true)
+  const [loadingCharts, setLoadingCharts] = useState(true)
 
   // Generate weekly progress data from real stories
   useEffect(() => {
     if (stories.length > 0) {
+      setLoadingCharts(true)
       generateWeeklyProgress()
       generateGenreDistribution()
       generateRecentStories()
+      setLoadingCharts(false)
+    } else if (!storiesLoading) {
+      setLoadingCharts(false)
     }
-  }, [stories])
+  }, [stories, storiesLoading])
 
   // Load achievements data with real calculations
   useEffect(() => {
@@ -362,6 +419,46 @@ export default function Dashboard({ userStats }: DashboardProps) {
     })
   }
 
+  // Get achievement theme colors based on website theme
+  const getAchievementThemeColors = (achievementId: string, earned: boolean) => {
+    const themeColors = {
+      first_story: {
+        earned: 'border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 dark:border-blue-800 dark:bg-gradient-to-br dark:from-blue-950/20 dark:to-blue-900/20',
+        unearned: 'border-blue-100 bg-gradient-to-br from-blue-25 to-blue-50 dark:border-blue-900 dark:bg-gradient-to-br dark:from-blue-950/10 dark:to-blue-900/10 opacity-60'
+      },
+      week_warrior: {
+        earned: 'border-orange-200 bg-gradient-to-br from-orange-50 to-orange-100 dark:border-orange-800 dark:bg-gradient-to-br dark:from-orange-950/20 dark:to-orange-900/20',
+        unearned: 'border-orange-100 bg-gradient-to-br from-orange-25 to-orange-50 dark:border-orange-900 dark:bg-gradient-to-br dark:from-orange-950/10 dark:to-orange-900/10 opacity-60'
+      },
+      genre_explorer: {
+        earned: 'border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100 dark:border-purple-800 dark:bg-gradient-to-br dark:from-purple-950/20 dark:to-purple-900/20',
+        unearned: 'border-purple-100 bg-gradient-to-br from-purple-25 to-purple-50 dark:border-purple-900 dark:bg-gradient-to-br dark:from-purple-950/10 dark:to-purple-900/10 opacity-60'
+      },
+      marathon_storyteller: {
+        earned: 'border-green-200 bg-gradient-to-br from-green-50 to-green-100 dark:border-green-800 dark:bg-gradient-to-br dark:from-green-950/20 dark:to-green-900/20',
+        unearned: 'border-green-100 bg-gradient-to-br from-green-25 to-green-50 dark:border-green-900 dark:bg-gradient-to-br dark:from-green-950/10 dark:to-green-900/10 opacity-60'
+      },
+      century_club: {
+        earned: 'border-yellow-200 bg-gradient-to-br from-yellow-50 to-yellow-100 dark:border-yellow-800 dark:bg-gradient-to-br dark:from-yellow-950/20 dark:to-yellow-900/20',
+        unearned: 'border-yellow-100 bg-gradient-to-br from-yellow-25 to-yellow-50 dark:border-yellow-900 dark:bg-gradient-to-br dark:from-yellow-950/10 dark:to-yellow-900/10 opacity-60'
+      },
+      master_storyteller: {
+        earned: 'border-indigo-200 bg-gradient-to-br from-indigo-50 to-indigo-100 dark:border-indigo-800 dark:bg-gradient-to-br dark:from-indigo-950/20 dark:to-indigo-900/20',
+        unearned: 'border-indigo-100 bg-gradient-to-br from-indigo-25 to-indigo-50 dark:border-indigo-900 dark:bg-gradient-to-br dark:from-indigo-950/10 dark:to-indigo-900/10 opacity-60'
+      }
+    }
+
+    const colors = themeColors[achievementId as keyof typeof themeColors]
+    if (!colors) {
+      // Default fallback colors
+      return earned 
+        ? 'border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100 dark:border-gray-800 dark:bg-gradient-to-br dark:from-gray-950/20 dark:to-gray-900/20'
+        : 'border-gray-100 bg-gradient-to-br from-gray-25 to-gray-50 dark:border-gray-900 dark:bg-gradient-to-br dark:from-gray-950/10 dark:to-gray-900/10 opacity-60'
+    }
+
+    return earned ? colors.earned : colors.unearned
+  }
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Stats Overview */}
@@ -427,91 +524,100 @@ export default function Dashboard({ userStats }: DashboardProps) {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              Weekly Progress
-            </CardTitle>
-            <CardDescription>Your storytelling activity this week</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {progressData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={progressData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="day" />
-                  <YAxis />
-                  <Tooltip 
-                    formatter={(value, name) => [
-                      value, 
-                      name === 'stories' ? 'Stories' : 'Minutes'
-                    ]}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="stories" 
-                    stroke="#3B82F6" 
-                    strokeWidth={2}
-                    dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
-                    name="stories"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                <div className="text-center">
-                  <Book className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>No stories recorded yet</p>
-                  <p className="text-sm">Start recording to see your progress!</p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {loadingCharts ? (
+          <>
+            <WeeklyProgressSkeleton />
+            <GenreDistributionSkeleton />
+          </>
+        ) : (
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Weekly Progress
+                </CardTitle>
+                <CardDescription>Your storytelling activity this week</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {progressData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={progressData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="day" />
+                      <YAxis />
+                      <Tooltip 
+                        formatter={(value, name) => [
+                          value, 
+                          name === 'stories' ? 'Stories' : 'Minutes'
+                        ]}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="stories" 
+                        stroke="#3B82F6" 
+                        strokeWidth={2}
+                        dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
+                        name="stories"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                    <div className="text-center">
+                      <Book className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>No stories recorded yet</p>
+                      <p className="text-sm">Start recording to see your progress!</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Book className="h-5 w-5" />
-              Genre Distribution
-            </CardTitle>
-            <CardDescription>Your favorite story genres</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {genreData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={genreData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="genre" 
-                    tick={{ fontSize: 12 }}
-                    interval={0}
-                    angle={-45}
-                    textAnchor="end"
-                    height={80}
-                  />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar 
-                    dataKey="count" 
-                    fill="#8884d8" 
-                    radius={[4, 4, 0, 0]}
-                    name="Stories"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                <div className="text-center">
-                  <Target className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>No genre data yet</p>
-                  <p className="text-sm">Try different genres to see your preferences!</p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Book className="h-5 w-5" />
+                  Genre Distribution
+                </CardTitle>
+                <CardDescription>Your favorite story genres</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {genreData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={genreData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis 
+                        dataKey="genre" 
+                        tick={{ fontSize: 12 }}
+                        interval={0}
+                        angle={-45}
+                        textAnchor="end"
+                        height={80}
+                      />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar 
+                        dataKey="count" 
+                        fill="#8884d8" 
+                        radius={[4, 4, 0, 0]}
+                        name="Stories"
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                    <div className="text-center">
+                      <Target className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>No genre data yet</p>
+                      <p className="text-sm">Try different genres to see your preferences!</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
 
       {/* Achievements */}
@@ -544,11 +650,7 @@ export default function Dashboard({ userStats }: DashboardProps) {
               {achievements.map((achievement) => (
                 <div
                   key={achievement.id}
-                  className={`p-4 rounded-lg border-2 transition-all duration-200 ${
-                    achievement.earned
-                      ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20'
-                      : 'border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950/20'
-                  }`}
+                  className={`p-4 rounded-lg border-2 transition-all duration-200 ${getAchievementThemeColors(achievement.id, achievement.earned)}`}
                 >
                   <div className="flex items-start gap-3">
                     <div className={`text-2xl ${achievement.earned ? '' : 'grayscale opacity-50'}`}>
