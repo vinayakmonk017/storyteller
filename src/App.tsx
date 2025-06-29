@@ -41,55 +41,119 @@ export default function App() {
     }
   }, [authLoading, user])
 
-  // Enhanced story completion tracking with better audio URL handling
+  // Enhanced story completion tracking with better state management
   useEffect(() => {
     if (processingStoryId && stories.length > 0) {
+      console.log('🎵 Checking for story completion...', {
+        processingStoryId,
+        storiesCount: stories.length,
+        currentView
+      })
+
       // Find the exact story we're tracking
       const processingStory = stories.find(s => s.id === processingStoryId)
       
-      if (processingStory?.processing_status === 'completed') {
-        // Enhanced logging for audio URL debugging
-        console.log('🎵 Story completed, checking audio URL:', {
+      if (processingStory) {
+        console.log('🎵 Found processing story:', {
           storyId: processingStory.id,
           title: processingStory.title,
-          audioUrl: processingStory.audio_url,
+          status: processingStory.processing_status,
           hasAudioUrl: !!processingStory.audio_url,
-          audioUrlValid: processingStory.audio_url && processingStory.audio_url !== 'placeholder-url',
           hasFeedback: !!(processingStory.story_feedback && processingStory.story_feedback.length > 0),
-          createdAt: processingStory.created_at,
-          processingStoryId: processingStoryId
+          feedbackCount: processingStory.story_feedback?.length || 0
         })
 
-        // Check if we have feedback
-        if (processingStory.story_feedback && processingStory.story_feedback.length > 0) {
-          // Ensure we have a valid audio URL
-          if (!processingStory.audio_url || processingStory.audio_url === 'placeholder-url') {
-            console.warn('⚠️ Story completed but audio URL is missing or invalid')
+        if (processingStory.processing_status === 'completed') {
+          // CRITICAL: Check if we have feedback before redirecting
+          if (processingStory.story_feedback && processingStory.story_feedback.length > 0) {
+            console.log('✅ Story completed with feedback - redirecting to feedback page')
+            
+            // Clear current story first to prevent stale data
+            setCurrentStory(null)
+            
+            // Small delay to ensure state is cleared
+            setTimeout(() => {
+              setCurrentStory({
+                ...processingStory,
+                // Add unique render key to force re-render
+                _renderKey: `${processingStory.id}-${Date.now()}`
+              })
+              setCurrentView('feedback')
+              setProcessingStoryId(null)
+              refreshStats()
+            }, 100)
+          } else {
+            console.log('⚠️ Story completed but no feedback found - waiting for feedback...')
+            // Story is completed but feedback might still be processing
+            // Keep checking for a bit longer
           }
-
-          // CRITICAL: Clear the current story first to prevent stale data
-          setCurrentStory(null)
-          
-          // Set a small delay to ensure state is cleared
-          setTimeout(() => {
-            setCurrentStory({
-              ...processingStory,
-              // Add a unique identifier to force re-render
-              _renderKey: `${processingStory.id}-${Date.now()}`
-            })
-            setCurrentView('feedback')
-            setProcessingStoryId(null)
-            refreshStats()
-          }, 100)
+        } else if (processingStory.processing_status === 'failed') {
+          console.error('❌ Story processing failed for story:', processingStory.id)
+          alert('Story processing failed. Please try again.')
+          setProcessingStoryId(null)
+          setCurrentView('record')
+        } else if (processingStory.processing_status === 'processing') {
+          console.log('⏳ Story still processing...')
         }
-      } else if (processingStory?.processing_status === 'failed') {
-        console.error('❌ Story processing failed for story:', processingStory.id)
-        alert('Story processing failed. Please try again.')
-        setProcessingStoryId(null)
-        setCurrentView('record')
+      } else {
+        console.log('⚠️ Processing story not found in stories list')
       }
     }
-  }, [processingStoryId, stories, refreshStats, setProcessingStoryId])
+  }, [processingStoryId, stories, refreshStats, setProcessingStoryId, currentView])
+
+  // Additional check for feedback completion with polling
+  useEffect(() => {
+    if (processingStoryId && currentView !== 'feedback') {
+      console.log('🔄 Setting up feedback polling for story:', processingStoryId)
+      
+      const pollForFeedback = async () => {
+        try {
+          const storyWithFeedback = await getStoryById(processingStoryId)
+          
+          if (storyWithFeedback) {
+            console.log('📊 Polled story data:', {
+              id: storyWithFeedback.id,
+              status: storyWithFeedback.processing_status,
+              hasFeedback: !!(storyWithFeedback.story_feedback && storyWithFeedback.story_feedback.length > 0),
+              feedbackCount: storyWithFeedback.story_feedback?.length || 0
+            })
+
+            if (storyWithFeedback.processing_status === 'completed' && 
+                storyWithFeedback.story_feedback && 
+                storyWithFeedback.story_feedback.length > 0) {
+              
+              console.log('✅ Feedback found via polling - redirecting!')
+              
+              setCurrentStory(null)
+              setTimeout(() => {
+                setCurrentStory({
+                  ...storyWithFeedback,
+                  _renderKey: `${storyWithFeedback.id}-${Date.now()}`
+                })
+                setCurrentView('feedback')
+                setProcessingStoryId(null)
+                refreshStats()
+              }, 100)
+            }
+          }
+        } catch (error) {
+          console.error('Error polling for feedback:', error)
+        }
+      }
+
+      // Poll every 2 seconds for up to 30 seconds
+      const pollInterval = setInterval(pollForFeedback, 2000)
+      const timeout = setTimeout(() => {
+        clearInterval(pollInterval)
+        console.log('⏰ Feedback polling timeout reached')
+      }, 30000)
+
+      return () => {
+        clearInterval(pollInterval)
+        clearTimeout(timeout)
+      }
+    }
+  }, [processingStoryId, currentView, getStoryById, setProcessingStoryId, refreshStats])
 
   const handleStoryComplete = async (storyData: any) => {
     if (!user) {
@@ -167,7 +231,7 @@ export default function App() {
         audioBlob: storyData.audioBlob
       })
 
-      // The real-time subscription will handle the completion automatically
+      // The real-time subscription and polling will handle the completion automatically
       console.log('🎵 Story creation initiated, waiting for completion...')
       
     } catch (error) {
@@ -388,8 +452,13 @@ export default function App() {
                         Our AI is transcribing your recording and preparing personalized feedback...
                       </p>
                       <p className="text-sm text-muted-foreground mt-2">
-                        ⚡ Real-time updates enabled - no need to refresh!
+                        ⚡ Real-time updates enabled - you'll be redirected automatically!
                       </p>
+                      {processingStoryId && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Story ID: {processingStoryId.substring(0, 8)}...
+                        </p>
+                      )}
                     </div>
                   </div>
                 </CardContent>

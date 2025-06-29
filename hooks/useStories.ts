@@ -22,6 +22,7 @@ export function useStories() {
       return data || []
     },
     enabled: !!user,
+    refetchInterval: processingStoryId ? 2000 : false, // Poll every 2 seconds when processing
   })
 
   // Set up real-time subscription
@@ -45,7 +46,7 @@ export function useStories() {
           
           const updatedStory = payload.new as Story
           
-          // Update the query cache
+          // Update the query cache immediately
           queryClient.setQueryData(['stories', user.id], (oldStories: any[]) => {
             if (!oldStories) return []
             return oldStories.map(story => 
@@ -55,10 +56,25 @@ export function useStories() {
             )
           })
           
-          // If story is completed and we're tracking it, fetch its feedback
-          if (updatedStory.processing_status === 'completed' && processingStoryId === updatedStory.id) {
-            loadStoryFeedback(updatedStory.id)
+          // Force a refetch to get the latest data including feedback
+          if (updatedStory.processing_status === 'completed') {
+            console.log('Story completed - forcing data refresh')
+            refreshStories()
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'story_feedback',
+        },
+        (payload) => {
+          console.log('Real-time feedback insert received:', payload)
+          
+          // Force refresh when feedback is added
+          refreshStories()
         }
       )
       .subscribe()
@@ -67,30 +83,7 @@ export function useStories() {
       console.log('Cleaning up real-time subscription')
       subscription.unsubscribe()
     }
-  }, [user, queryClient, processingStoryId])
-
-  const loadStoryFeedback = async (storyId: string) => {
-    try {
-      const { data: feedback, error } = await supabase
-        .from('story_feedback')
-        .select('*')
-        .eq('story_id', storyId)
-
-      if (error) throw error
-
-      // Update the story with its feedback in the cache
-      queryClient.setQueryData(['stories', user?.id], (oldStories: any[]) => {
-        if (!oldStories) return []
-        return oldStories.map(story =>
-          story.id === storyId
-            ? { ...story, story_feedback: feedback }
-            : story
-        )
-      })
-    } catch (error) {
-      console.error('Error loading story feedback:', error)
-    }
-  }
+  }, [user, queryClient, refreshStories])
 
   // Mutation for creating stories
   const createStoryMutation = useMutation({
